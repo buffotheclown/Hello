@@ -6,6 +6,10 @@ using Intersect.Client.Core;
 using Intersect.Client.Core.Controls;
 using Intersect.Client.Entities.Events;
 using Intersect.Client.Entities.Projectiles;
+
+using Intersect.Client.Framework.File_Management;
+using Intersect.Client.Framework.Graphics;
+
 using Intersect.Client.General;
 using Intersect.Client.Interface.Game;
 using Intersect.Client.Interface.Game.EntityPanel;
@@ -62,6 +66,11 @@ namespace Intersect.Client.Entities
 
         public int TargetType;
 
+        protected string[] mMyCustomSpriteLayers { get; set; } = new string[(int)Enums.CustomSpriteLayers.CustomCount];
+
+        public GameTexture[] CustomSpriteLayersTexture { get; set; } = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
+        public Dictionary<SpriteAnimations, GameTexture[]> CustomSpriteLayersAnimationTexture { get; set; } = new Dictionary<SpriteAnimations, GameTexture[]>();
+
         public long CombatTimer { get; set; } = 0;
 
         // Target data
@@ -101,6 +110,34 @@ namespace Intersect.Client.Entities
                 return mParty;
             }
         }
+
+        public virtual string[] CustomSpriteLayers
+        {
+         get => mMyCustomSpriteLayers;
+         set
+           {
+            mMyCustomSpriteLayers = value;
+            CustomSpriteLayersTexture = GetCustomSpriteTextures(value);
+             }
+         }
+         private GameTexture[] GetCustomSpriteTextures(string[] customSpriteLayers)
+        {
+         var textures = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
+         for (int i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
+                    {
+                         switch (i)
+                    {
+                     case (int)Enums.CustomSpriteLayers.Hair:
+ textures[i] = Globals.ContentManager.GetTexture(GameContentManager.TextureType.Hair, customSpriteLayers[i]);
+        LoadCustomSpriteLayerAnimationTextures(customSpriteLayers[i], Enums.CustomSpriteLayers.Hair, GameContentManager.TextureType.Hair);
+                   break;
+              }
+        }
+
+            return textures;
+         }
+
+
 
         public override Guid CurrentMap
         {
@@ -221,6 +258,16 @@ namespace Intersect.Client.Entities
                 TargetBox = new EntityBox(Interface.Interface.GameUi.GameCanvas, EntityTypes.Player, null);
                 TargetBox.Hide();
             }
+
+            for (var i = 0; i <= (int)SpriteAnimations.Weapon; i++)
+                {
+                CustomSpriteLayersAnimationTexture[(SpriteAnimations)i] = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
+                            }
+            
+                 if (pkt.CustomSpriteLayers != null)
+                  {
+                 this.CustomSpriteLayers = pkt.CustomSpriteLayers.CustomSpriteLayers;
+                  }
         }
 
         public override EntityTypes GetEntityType()
@@ -1942,7 +1989,135 @@ namespace Intersect.Client.Entities
 
             public int DistanceTo;
         }
+        public void LoadCustomSpriteLayerAnimationTextures(string tex, CustomSpriteLayers layer, GameContentManager.TextureType textype)
+         {
+             var file = System.IO.Path.GetFileNameWithoutExtension(tex);
+             var ext = System.IO.Path.GetExtension(tex);
 
+             foreach (var anim in Enum.GetValues(typeof(SpriteAnimations)))
+             {
+                 CustomSpriteLayersAnimationTexture[(SpriteAnimations)anim][(int)layer] = Globals.ContentManager.GetTexture(textype, $@"{file}_{anim}{ext}");
+            }
+         }
+
+         public virtual void DrawCustomSpriteLayer(CustomSpriteLayers layer, GameContentManager.TextureType textype, int alpha)
+         {
+  var map = MapInstance.Get(CurrentMap);
+                 if (map == null)
+                     {
+                         return;
+                     }
+    
+                 if (CustomSpriteLayersAnimationTexture[SpriteAnimation][(int)layer] == null && CustomSpriteLayersTexture[(int)layer] == null)
+                    {
+                         return;
+                    }
+    
+     var srcRectangle = new FloatRect();
+     var destRectangle = new FloatRect();
+     var d = 0;
+    
+     var texture = CustomSpriteLayersAnimationTexture[SpriteAnimation][(int)layer] ?? CustomSpriteLayersTexture[(int)layer];
+    
+                 if (texture != null)
+                     {
+                if (texture.GetHeight() / Options.Instance.Sprites.Directions > Options.TileHeight)
+                {
+             destRectangle.X = map.GetX() + X * Options.TileWidth + OffsetX + Options.TileWidth / 2;
+             destRectangle.Y = GetCenterPos().Y - texture.GetHeight() / (Options.Instance.Sprites.Directions * 2);
+                }
+                         else
+                             {
+             destRectangle.X = map.GetX() + X * Options.TileWidth + OffsetX + Options.TileWidth / 2;
+                    destRectangle.Y = map.GetY() + Y * Options.TileHeight + OffsetY;
+                }
+
+                destRectangle.X -= texture.GetWidth() / (SpriteFrames * 2);
+                switch (Dir)
+                      {
+                     case 0:
+                        d = 3;
+        
+                     break;
+                     case 1:
+                         d = 0;
+        
+                           break;
+                    case 2:
+                     d = 1;
+        
+                        break;
+                             case 3:
+                        d = 2;
+                        break;
+                    case 4: // UpLeft
+                        d = 5;
+
+                        break;
+                    case 5: // UpRight
+                        d = 7;
+
+                        break;
+                    case 6: // DownLeft
+                        d = 4;
+
+                        break;
+                    case 7: // DownRight
+                        d = 6;
+                        break;
+                    default:
+                     Dir = 0;
+                        d = 3;
+        
+                       break;
+                     }
+    
+    destRectangle.X = (int)Math.Ceiling(destRectangle.X);
+    destRectangle.Y = (int)Math.Ceiling(destRectangle.Y);
+                     if (Options.AnimatedSprites.Contains(CustomSpriteLayers[(int)layer].ToLower()))
+                     {
+        srcRectangle = new FloatRect(
+           AnimationFrame * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
+                        (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
+                           );
+                      }
+                    else
+                       {
+                     if (SpriteAnimation == SpriteAnimations.Normal)
+                      {
+           var attackTime = CalculateAttackTime();
+                 if (AttackTimer - CalculateAttackTime() / 2 > Globals.System.GetTimeMs() || Blocking)
+                    {
+             srcRectangle = new FloatRect(
+              3 * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
+                                (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
+                                         );
+                  }
+                    else
+                  {
+                 //Restore Original Attacking/Blocking Code
+                 srcRectangle = new FloatRect(
+                 WalkFrame * (int) texture.GetWidth() / SpriteFrames, d * (int) texture.GetHeight() / Options.Instance.Sprites.Directions,
+                                (int) texture.GetWidth() / SpriteFrames, (int) texture.GetHeight() / Options.Instance.Sprites.Directions
+                                       );
+                            }
+                        }
+                            else
+                                 {
+            srcRectangle = new FloatRect(
+            SpriteFrame * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
+                            (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
+                              );
+                                 }
+                        }
+    
+     destRectangle.Width = srcRectangle.Width;
+     destRectangle.Height = srcRectangle.Height;
+     Graphics.DrawGameTexture(
+     texture, srcRectangle, destRectangle, new Color(alpha, 255, 255, 255)
+                             );
+                 }
+         }
     }
 
     public class FriendInstance

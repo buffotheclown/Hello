@@ -349,6 +349,8 @@ namespace Intersect.Server.Migrations
 
                     b.Property<Guid>("ClassId");
 
+                 
+
                     b.Property<int>("Dir");
 
                     b.Property<string>("EquipmentJson")

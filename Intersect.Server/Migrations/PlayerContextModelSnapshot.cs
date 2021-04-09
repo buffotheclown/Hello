@@ -335,6 +335,9 @@ namespace Intersect.Server.Migrations
 
                     b.Property<Guid>("ClassId");
 
+					b.Property<string>("CustomSpriteLayersJson")
+                        .HasColumnName("CustomSpriteLayers");
+						
                     b.Property<DateTime?>("CreationDate");
 
                     b.Property<int>("Dir");
