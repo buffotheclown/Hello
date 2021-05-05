@@ -1,0 +1,4623 @@
+From a869a06424ca53b54e700cd92b946e4d2230681c Mon Sep 17 00:00:00 2001
+From: Justn53 <justn53@gmail.com>
+Date: Fri, 9 Apr 2021 04:31:14 -0500
+Subject: [PATCH 1/4] Added Base Hair
+
+Need to fix bust and faces for Equipment window and entity box. Also need to add bust for create char window. Need to add Event command to change hair
+---
+ Intersect (Core)/Config/EquipmentOptions.cs   |    2 +
+ Intersect (Core)/Enums/CustomSpriteLayers.cs  |   17 +
+ Intersect (Core)/GameObjects/ClassBase.cs     |   34 +-
+ Intersect (Core)/Intersect (Core).csproj      |    2 +
+ .../Packets/Client/CreateCharacterPacket.cs   |    6 +-
+ .../Network/Packets/Server/CharacterPacket.cs |    7 +-
+ .../Server/CustomSpriteLayersPacket.cs        |   30 +
+ .../Packets/Server/PlayerEntityPacket.cs      |    3 +
+ Intersect (Core)/Utilities/DatabaseUtils.cs   |   40 +
+ .../File Management/GameContentManager.cs     |   15 +
+ Intersect.Client/Entities/Entity.cs           |    8 +
+ Intersect.Client/Entities/Player.cs           |  175 +++
+ .../Game/Character/CharacterWindow.cs         |    8 +-
+ .../Interface/Game/EntityPanel/EntityBox.cs   |    9 +-
+ .../Interface/Menu/CreateCharacterWindow.cs   |  223 +++-
+ .../Interface/Menu/SelectCharacterWindow.cs   |   28 +-
+ .../File Management/MonoContentManager.cs     |    5 +
+ Intersect.Client/Networking/PacketHandler.cs  |   15 +-
+ Intersect.Client/Networking/PacketSender.cs   |    4 +-
+ Intersect.Editor/Content/ContentManager.cs    |   19 +
+ .../Forms/Editors/frmClass.Designer.cs        |  231 +++-
+ Intersect.Editor/Forms/Editors/frmClass.cs    |  193 ++-
+ Intersect.Editor/Forms/Editors/frmClass.resx  |    4 +
+ Intersect.Editor/Localization/Strings.cs      |    7 +-
+ Intersect.Server/Entities/Player.cs           |   14 +-
+ Intersect.Server/Intersect.Server.csproj      |   12 +
+ ...0013418_StandardizeVocabulary1.Designer.cs |    2 +
+ ...2173703_PlayerHair_PlayerEdits.Designer.cs |  514 ++++++++
+ .../20200402173703_PlayerHair_PlayerEdits.cs  |   21 +
+ ...02142818_PlayerHair_ClassEdits.Designer.cs | 1039 +++++++++++++++++
+ .../20200402142818_PlayerHair_ClassEdits.cs   |   21 +
+ .../Game/GameContextModelSnapshot.cs          |    3 +
+ .../Migrations/PlayerContextModelSnapshot.cs  |    3 +
+ Intersect.Server/Networking/PacketHandler.cs  |    6 +
+ Intersect.Server/Networking/PacketSender.cs   |   44 +-
+ 35 files changed, 2712 insertions(+), 52 deletions(-)
+ create mode 100644 Intersect (Core)/Enums/CustomSpriteLayers.cs
+ create mode 100644 Intersect (Core)/Network/Packets/Server/CustomSpriteLayersPacket.cs
+ create mode 100644 Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.Designer.cs
+ create mode 100644 Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.cs
+ create mode 100644 Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.Designer.cs
+ create mode 100644 Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.cs
+
+diff --git a/Intersect (Core)/Config/EquipmentOptions.cs b/Intersect (Core)/Config/EquipmentOptions.cs
+index 91ae727a..73375713 100644
+--- a/Intersect (Core)/Config/EquipmentOptions.cs	
++++ b/Intersect (Core)/Config/EquipmentOptions.cs	
+@@ -22,6 +22,8 @@ public class EquipmentOptions
+             "Boots",
+         };
+ 
++        public string HairSlot { get; set; } = "Helmet";
++
+         public List<string> ToolTypes = new List<string>()
+         {
+             "Axe",
+diff --git a/Intersect (Core)/Enums/CustomSpriteLayers.cs b/Intersect (Core)/Enums/CustomSpriteLayers.cs
+new file mode 100644
+index 00000000..eb0c33a4
+--- /dev/null
++++ b/Intersect (Core)/Enums/CustomSpriteLayers.cs	
+@@ -0,0 +1,17 @@
++﻿using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Text;
++using System.Threading.Tasks;
++
++namespace Intersect.Enums
++{
++
++     public enum CustomSpriteLayers
++    {
++
++         Hair = 0,
++
++         CustomCount
++    }
++}
+diff --git a/Intersect (Core)/GameObjects/ClassBase.cs b/Intersect (Core)/GameObjects/ClassBase.cs
+index d52018a1..650f366d 100644
+--- a/Intersect (Core)/GameObjects/ClassBase.cs	
++++ b/Intersect (Core)/GameObjects/ClassBase.cs	
+@@ -36,6 +36,8 @@ public class ClassBase : DatabaseObject<ClassBase>, IFolderable
+ 
+         [NotMapped] public List<ClassSprite> Sprites = new List<ClassSprite>();
+ 
++        [NotMapped] public Dictionary<Enums.CustomSpriteLayers, List<CustomSpriteLayer>> CustomSpriteLayers = new Dictionary<Enums.CustomSpriteLayers, List<CustomSpriteLayer>>();
++
+         [NotMapped] public int[] StatIncrease = new int[(int) Stats.StatCount];
+ 
+         [NotMapped] public int[] VitalIncrease = new int[(int) Vitals.VitalCount];
+@@ -51,6 +53,12 @@ public ClassBase(Guid id) : base(id)
+             ExperienceCurve.Calculate(1);
+             BaseExp = DEFAULT_BASE_EXPERIENCE;
+             ExpIncrease = DEFAULT_EXPERIENCE_INCREASE;
++
++            // Init the empty lists, stop getting null references.
++                for (int i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                 {
++                 CustomSpriteLayers[(Enums.CustomSpriteLayers)i] = new List<CustomSpriteLayer>();
++                 }
+         }
+ 
+         //Parameterless constructor for EF
+@@ -62,6 +70,12 @@ public ClassBase()
+             ExperienceCurve.Calculate(1);
+             BaseExp = DEFAULT_BASE_EXPERIENCE;
+             ExpIncrease = DEFAULT_EXPERIENCE_INCREASE;
++            // Init the empty lists, stop gettng null references.
++                for (int i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                 {
++                 CustomSpriteLayers[(Enums.CustomSpriteLayers)i] = new List<CustomSpriteLayer>();
++                 }
++
+         }
+ 
+         [Column("AttackAnimation")]
+@@ -191,8 +205,17 @@ public string JsonSprites
+             protected set => Sprites = JsonConvert.DeserializeObject<List<ClassSprite>>(value);
+         }
+ 
+-        //Stat Increases (per level)
+-        [JsonIgnore]
++         //Sprites
++         [JsonIgnore]
++         [Column("CustomSpriteLayers")]
++         public string JsonCustomSpriteLayers
++         {
++             get => JsonConvert.SerializeObject(CustomSpriteLayers);
++             protected set => CustomSpriteLayers = value != null ? JsonConvert.DeserializeObject<Dictionary<Enums.CustomSpriteLayers, List<CustomSpriteLayer>>>(value) : CustomSpriteLayers;     // Because a migrated database doesn't have this, set to default value if no data exists.
++         }
++
++    //Stat Increases (per level)
++    [JsonIgnore]
+         [Column("StatIncreases")]
+         public string StatIncreaseJson
+         {
+@@ -289,4 +312,11 @@ public class ClassSprite
+ 
+     }
+ 
++    public class CustomSpriteLayer
++     {
++         public string Texture = "";
++
++         public Gender Gender;
++     }
++
+ }
+diff --git a/Intersect (Core)/Intersect (Core).csproj b/Intersect (Core)/Intersect (Core).csproj
+index 01bf092e..890faa2b 100644
+--- a/Intersect (Core)/Intersect (Core).csproj	
++++ b/Intersect (Core)/Intersect (Core).csproj	
+@@ -264,6 +264,7 @@
+     <Compile Include="CustomColors.cs" />
+     <Compile Include="Enums\ChatboxTab.cs" />
+     <Compile Include="Enums\ChatMessageType.cs" />
++    <Compile Include="Enums\CustomSpriteLayers.cs" />
+     <Compile Include="Enums\ItemHandling.cs" />
+     <Compile Include="ErrorHandling\ExceptionInfo.cs" />
+     <Compile Include="Extensions\ArrayExtensions.cs" />
+@@ -385,6 +386,7 @@
+     <Compile Include="Network\Packets\Client\LoginPacket.cs" />
+     <Compile Include="Network\Packets\Server\ActionMsgPackets.cs" />
+     <Compile Include="Network\Packets\Server\EntityMovementPackets.cs" />
++    <Compile Include="Network\Packets\Server\CustomSpriteLayersPacket.cs" />
+     <Compile Include="Network\Packets\Server\MapEntityStatusPacket.cs" />
+     <Compile Include="Network\Packets\Server\MapEntityVitalsPacket.cs" />
+     <Compile Include="Network\Packets\Client\LogoutPacket.cs" />
+diff --git a/Intersect (Core)/Network/Packets/Client/CreateCharacterPacket.cs b/Intersect (Core)/Network/Packets/Client/CreateCharacterPacket.cs
+index 44def570..5383859d 100644
+--- a/Intersect (Core)/Network/Packets/Client/CreateCharacterPacket.cs	
++++ b/Intersect (Core)/Network/Packets/Client/CreateCharacterPacket.cs	
+@@ -15,11 +15,12 @@ public CreateCharacterPacket()
+         {
+         }
+ 
+-        public CreateCharacterPacket(string name, Guid classId, int sprite)
++        public CreateCharacterPacket(string name, Guid classId, int sprite, int[] customSpriteLayers)
+         {
+             Name = name;
+             ClassId = classId;
+             Sprite = sprite;
++            CustomSpriteLayers = customSpriteLayers;
+         }
+ 
+         [Key(0)]
+@@ -31,6 +32,9 @@ public CreateCharacterPacket(string name, Guid classId, int sprite)
+         [Key(2)]
+         public int Sprite { get; set; }
+ 
++        [Key(3)]
++        public int[] CustomSpriteLayers { get; set; }
++
+         public override Dictionary<string, SanitizedValue<object>> Sanitize()
+         {
+             base.Sanitize();
+diff --git a/Intersect (Core)/Network/Packets/Server/CharacterPacket.cs b/Intersect (Core)/Network/Packets/Server/CharacterPacket.cs
+index 06c97a56..920955ab 100644
+--- a/Intersect (Core)/Network/Packets/Server/CharacterPacket.cs	
++++ b/Intersect (Core)/Network/Packets/Server/CharacterPacket.cs	
+@@ -18,7 +18,8 @@ public CharacterPacket()
+             string face,
+             int level,
+             string className,
+-            string[] equipment
++            string[] equipment,
++            string[] customspritelayers
+         )
+         {
+             Id = id;
+@@ -28,6 +29,7 @@ string[] equipment
+             Level = level;
+             ClassName = className;
+             Equipment = equipment;
++            CustomSpriteLayers = customspritelayers;
+         }
+ 
+         [Key(0)]
+@@ -51,6 +53,9 @@ string[] equipment
+         [Key(6)]
+         public string[] Equipment { get; set; }
+ 
++        [Key(7)]
++        public string[] CustomSpriteLayers { get; set; }
++
+     }
+ 
+ }
+diff --git a/Intersect (Core)/Network/Packets/Server/CustomSpriteLayersPacket.cs b/Intersect (Core)/Network/Packets/Server/CustomSpriteLayersPacket.cs
+new file mode 100644
+index 00000000..f58e1de1
+--- /dev/null
++++ b/Intersect (Core)/Network/Packets/Server/CustomSpriteLayersPacket.cs	
+@@ -0,0 +1,30 @@
++﻿using MessagePack;
++using System;
++
++
++namespace Intersect.Network.Packets.Server
++{
++    [MessagePackObject]
++    public class CustomSpriteLayersPacket : IntersectPacket
++    {
++        //Parameterless Constructor for MessagePack
++        public CustomSpriteLayersPacket()
++        {
++        }
++
++        public CustomSpriteLayersPacket(Guid entityId, string[] customSpriteLayers)
++        {
++            EntityId = entityId;
++            CustomSpriteLayers = customSpriteLayers;
++        }
++
++        [Key(0)]
++        public string[] CustomSpriteLayers { get; set; }
++
++        [Key(1)]
++        public Guid EntityId { get; set; }
++
++    }
++
++}
++
+diff --git a/Intersect (Core)/Network/Packets/Server/PlayerEntityPacket.cs b/Intersect (Core)/Network/Packets/Server/PlayerEntityPacket.cs
+index 7ab86600..3b4703a3 100644
+--- a/Intersect (Core)/Network/Packets/Server/PlayerEntityPacket.cs	
++++ b/Intersect (Core)/Network/Packets/Server/PlayerEntityPacket.cs	
+@@ -33,6 +33,9 @@ public PlayerEntityPacket()
+         [Key(28)]
+         public long CombatTimeRemaining { get; set; }
+ 
++        [Key(29)]
++        public CustomSpriteLayersPacket CustomSpriteLayers { get; set; }
++
+     }
+ 
+ }
+diff --git a/Intersect (Core)/Utilities/DatabaseUtils.cs b/Intersect (Core)/Utilities/DatabaseUtils.cs
+index 32db6e37..fa498ad0 100644
+--- a/Intersect (Core)/Utilities/DatabaseUtils.cs	
++++ b/Intersect (Core)/Utilities/DatabaseUtils.cs	
+@@ -25,6 +25,23 @@ public static int[] LoadIntArray(string json, int arrayLen)
+             return output;
+         }
+ 
++        public static string[] LoadStringArray(string json, int arrayLen)
++        {
++             var output = new string[arrayLen];
++             var jsonList = new List<string>();
++                         if (json != null)
++            {
++             jsonList = JsonConvert.DeserializeObject<List<string>>(json);
++                         }
++            
++                         for (var i = 0; i < arrayLen && i < jsonList.Count; i++)
++            {
++             output[i] = jsonList[i];
++                         }
++            
++                         return output;
++          }
++
+         public static void LoadIntArray(ref int[] output, string json, int arrayLen)
+         {
+             var jsonList = JsonConvert.DeserializeObject<List<int>>(json);
+@@ -57,6 +74,29 @@ public static string SaveIntArray(int[] array, int arrayLen)
+             return JsonConvert.SerializeObject(output);
+         }
+ 
++        public static string SaveStringArray(string[] array, int arrayLen)
++        {
++                         if (array == null)
++            {
++              array = new string[arrayLen];
++                          }
++            
++             var output = new List<string>();
++                for (var i = 0; i < arrayLen; i++)
++            {
++                  if (i < array.Length)
++                {
++             output.Add(array[i]);
++                            }
++                else
++                {
++                output.Add(string.Empty);
++                   }
++                 }
++            
++                return JsonConvert.SerializeObject(output);
++                    }
++
+         public static string SaveColor(Color color)
+         {
+             if (color == null)
+diff --git a/Intersect.Client.Framework/File Management/GameContentManager.cs b/Intersect.Client.Framework/File Management/GameContentManager.cs
+index eab124df..48020623 100644
+--- a/Intersect.Client.Framework/File Management/GameContentManager.cs	
++++ b/Intersect.Client.Framework/File Management/GameContentManager.cs	
+@@ -43,6 +43,8 @@ public enum TextureType
+             Gui,
+ 
+             Misc,
++			
++            Hair
+ 
+         }
+ 
+@@ -75,6 +77,8 @@ public enum UI
+ 
+         protected Dictionary<string, IAsset> mMiscDict = new Dictionary<string, IAsset>();
+ 
++        protected Dictionary<string, IAsset> mHairDict = new Dictionary<string, IAsset>();
++
+         protected Dictionary<string, GameAudioSource> mMusicDict = new Dictionary<string, GameAudioSource>();
+ 
+         protected Dictionary<string, IAsset> mPaperdollDict = new Dictionary<string, IAsset>();
+@@ -125,6 +129,7 @@ public void LoadAll()
+             LoadResources();
+             LoadPaperdolls();
+             LoadMisc();
++            LoadHairs();
+             LoadGui();
+             LoadFonts();
+             LoadShaders();
+@@ -138,6 +143,8 @@ public void LoadAll()
+ 
+         public abstract void LoadEntities();
+ 
++        public abstract void LoadHairs();
++
+         public abstract void LoadSpells();
+ 
+         public abstract void LoadAnimations();
+@@ -221,6 +228,9 @@ public string[] GetTextureNames(TextureType type)
+ 
+                 case TextureType.Misc:
+                     return mMiscDict.Keys.ToArray();
++
++                case TextureType.Hair:
++                    return mHairDict.Keys.ToArray();
+             }
+ 
+             return null;
+@@ -297,6 +307,11 @@ public virtual GameTexture GetTexture(TextureType type, string name)
+ 
+                     break;
+ 
++                case TextureType.Hair:
++                    textureDict = mHairDict;
++
++                    break;
++
+                 default:
+                     return null;
+             }
+diff --git a/Intersect.Client/Entities/Entity.cs b/Intersect.Client/Entities/Entity.cs
+index 0eb2d55b..2137b75d 100644
+--- a/Intersect.Client/Entities/Entity.cs
++++ b/Intersect.Client/Entities/Entity.cs
+@@ -1039,6 +1039,14 @@ public virtual void Draw()
+                                         DrawEquipment(item.FemalePaperdoll, alpha);
+                                     }
+                                 }
++                                else
++                                    {
++                                    // Render a hairstyle here if we're currently rendering the desired hair slot without any equipment in it.
++                                     if (this is Player && paperdoll == Options.EquipmentSlots[Options.EquipmentSlots.IndexOf(Options.Equipment.HairSlot)])
++                                    {
++                                     ((Player)this).DrawCustomSpriteLayer(CustomSpriteLayers.Hair, GameContentManager.TextureType.Hair, alpha);
++                                      }
++                                    }
+                             }
+                         }
+                     }
+diff --git a/Intersect.Client/Entities/Player.cs b/Intersect.Client/Entities/Player.cs
+index 5b60e5c7..25d94da8 100644
+--- a/Intersect.Client/Entities/Player.cs
++++ b/Intersect.Client/Entities/Player.cs
+@@ -6,6 +6,10 @@
+ using Intersect.Client.Core.Controls;
+ using Intersect.Client.Entities.Events;
+ using Intersect.Client.Entities.Projectiles;
++
++using Intersect.Client.Framework.File_Management;
++using Intersect.Client.Framework.Graphics;
++
+ using Intersect.Client.General;
+ using Intersect.Client.Interface.Game;
+ using Intersect.Client.Interface.Game.EntityPanel;
+@@ -62,6 +66,11 @@ public partial class Player : Entity
+ 
+         public int TargetType;
+ 
++        protected string[] mMyCustomSpriteLayers { get; set; } = new string[(int)Enums.CustomSpriteLayers.CustomCount];
++
++        public GameTexture[] CustomSpriteLayersTexture { get; set; } = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
++        public Dictionary<SpriteAnimations, GameTexture[]> CustomSpriteLayersAnimationTexture { get; set; } = new Dictionary<SpriteAnimations, GameTexture[]>();
++
+         public long CombatTimer { get; set; } = 0;
+ 
+         // Target data
+@@ -102,6 +111,34 @@ public List<PartyMember> Party
+             }
+         }
+ 
++        public virtual string[] CustomSpriteLayers
++        {
++         get => mMyCustomSpriteLayers;
++         set
++           {
++            mMyCustomSpriteLayers = value;
++            CustomSpriteLayersTexture = GetCustomSpriteTextures(value);
++             }
++         }
++         private GameTexture[] GetCustomSpriteTextures(string[] customSpriteLayers)
++        {
++         var textures = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
++         for (int i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                    {
++                         switch (i)
++                    {
++                     case (int)Enums.CustomSpriteLayers.Hair:
++ textures[i] = Globals.ContentManager.GetTexture(GameContentManager.TextureType.Hair, customSpriteLayers[i]);
++        LoadCustomSpriteLayerAnimationTextures(customSpriteLayers[i], Enums.CustomSpriteLayers.Hair, GameContentManager.TextureType.Hair);
++                   break;
++              }
++        }
++
++            return textures;
++         }
++
++
++
+         public override Guid CurrentMap
+         {
+             get => base.CurrentMap;
+@@ -221,6 +258,16 @@ public override void Load(EntityPacket packet)
+                 TargetBox = new EntityBox(Interface.Interface.GameUi.GameCanvas, EntityTypes.Player, null);
+                 TargetBox.Hide();
+             }
++
++            for (var i = 0; i <= (int)SpriteAnimations.Weapon; i++)
++                {
++                CustomSpriteLayersAnimationTexture[(SpriteAnimations)i] = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
++                            }
++            
++                 if (pkt.CustomSpriteLayers != null)
++                  {
++                 this.CustomSpriteLayers = pkt.CustomSpriteLayers.CustomSpriteLayers;
++                  }
+         }
+ 
+         public override EntityTypes GetEntityType()
+@@ -1942,7 +1989,135 @@ private class TargetInfo
+ 
+             public int DistanceTo;
+         }
++        public void LoadCustomSpriteLayerAnimationTextures(string tex, CustomSpriteLayers layer, GameContentManager.TextureType textype)
++         {
++             var file = System.IO.Path.GetFileNameWithoutExtension(tex);
++             var ext = System.IO.Path.GetExtension(tex);
++
++             foreach (var anim in Enum.GetValues(typeof(SpriteAnimations)))
++             {
++                 CustomSpriteLayersAnimationTexture[(SpriteAnimations)anim][(int)layer] = Globals.ContentManager.GetTexture(textype, $@"{file}_{anim}{ext}");
++            }
++         }
++
++         public virtual void DrawCustomSpriteLayer(CustomSpriteLayers layer, GameContentManager.TextureType textype, int alpha)
++         {
++  var map = MapInstance.Get(CurrentMap);
++                 if (map == null)
++                     {
++                         return;
++                     }
++    
++                 if (CustomSpriteLayersAnimationTexture[SpriteAnimation][(int)layer] == null && CustomSpriteLayersTexture[(int)layer] == null)
++                    {
++                         return;
++                    }
++    
++     var srcRectangle = new FloatRect();
++     var destRectangle = new FloatRect();
++     var d = 0;
++    
++     var texture = CustomSpriteLayersAnimationTexture[SpriteAnimation][(int)layer] ?? CustomSpriteLayersTexture[(int)layer];
++    
++                 if (texture != null)
++                     {
++                if (texture.GetHeight() / Options.Instance.Sprites.Directions > Options.TileHeight)
++                {
++             destRectangle.X = map.GetX() + X * Options.TileWidth + OffsetX + Options.TileWidth / 2;
++             destRectangle.Y = GetCenterPos().Y - texture.GetHeight() / (Options.Instance.Sprites.Directions * 2);
++                }
++                         else
++                             {
++             destRectangle.X = map.GetX() + X * Options.TileWidth + OffsetX + Options.TileWidth / 2;
++                    destRectangle.Y = map.GetY() + Y * Options.TileHeight + OffsetY;
++                }
++
++                destRectangle.X -= texture.GetWidth() / (SpriteFrames * 2);
++                switch (Dir)
++                      {
++                     case 0:
++                        d = 3;
++        
++                     break;
++                     case 1:
++                         d = 0;
++        
++                           break;
++                    case 2:
++                     d = 1;
++        
++                        break;
++                             case 3:
++                        d = 2;
++                        break;
++                    case 4: // UpLeft
++                        d = 5;
+ 
++                        break;
++                    case 5: // UpRight
++                        d = 7;
++
++                        break;
++                    case 6: // DownLeft
++                        d = 4;
++
++                        break;
++                    case 7: // DownRight
++                        d = 6;
++                        break;
++                    default:
++                     Dir = 0;
++                        d = 3;
++        
++                       break;
++                     }
++    
++    destRectangle.X = (int)Math.Ceiling(destRectangle.X);
++    destRectangle.Y = (int)Math.Ceiling(destRectangle.Y);
++                     if (Options.AnimatedSprites.Contains(CustomSpriteLayers[(int)layer].ToLower()))
++                     {
++        srcRectangle = new FloatRect(
++           AnimationFrame * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
++                        (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
++                           );
++                      }
++                    else
++                       {
++                     if (SpriteAnimation == SpriteAnimations.Normal)
++                      {
++           var attackTime = CalculateAttackTime();
++                 if (AttackTimer - CalculateAttackTime() / 2 > Globals.System.GetTimeMs() || Blocking)
++                    {
++             srcRectangle = new FloatRect(
++              3 * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
++                                (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
++                                         );
++                  }
++                    else
++                  {
++                 //Restore Original Attacking/Blocking Code
++                 srcRectangle = new FloatRect(
++                 WalkFrame * (int) texture.GetWidth() / SpriteFrames, d * (int) texture.GetHeight() / Options.Instance.Sprites.Directions,
++                                (int) texture.GetWidth() / SpriteFrames, (int) texture.GetHeight() / Options.Instance.Sprites.Directions
++                                       );
++                            }
++                        }
++                            else
++                                 {
++            srcRectangle = new FloatRect(
++            SpriteFrame * (int)texture.GetWidth() / SpriteFrames, d * (int)texture.GetHeight() / Options.Instance.Sprites.Directions,
++                            (int)texture.GetWidth() / SpriteFrames, (int)texture.GetHeight() / Options.Instance.Sprites.Directions
++                              );
++                                 }
++                        }
++    
++     destRectangle.Width = srcRectangle.Width;
++     destRectangle.Height = srcRectangle.Height;
++     Graphics.DrawGameTexture(
++     texture, srcRectangle, destRectangle, new Color(alpha, 255, 255, 255)
++                             );
++                 }
++         }
+     }
+ 
+     public class FriendInstance
+diff --git a/Intersect.Client/Interface/Game/Character/CharacterWindow.cs b/Intersect.Client/Interface/Game/Character/CharacterWindow.cs
+index 118f6235..1a3b1f0f 100644
+--- a/Intersect.Client/Interface/Game/Character/CharacterWindow.cs
++++ b/Intersect.Client/Interface/Game/Character/CharacterWindow.cs
+@@ -197,6 +197,7 @@ public void Update()
+                 for (var z = 0; z < Options.PaperdollOrder[1].Count; z++)
+                 {
+                     var paperdoll = "";
++                    var type = GameContentManager.TextureType.Paperdoll;
+                     if (Options.EquipmentSlots.IndexOf(Options.PaperdollOrder[1][z]) > -1)
+                     {
+                         var equipment = Globals.Me.MyEquipment;
+@@ -231,6 +232,11 @@ public void Update()
+                         PaperdollPanels[z].RenderColor = Globals.Me.Color;
+                         Align.Center(PaperdollPanels[z]);
+                     }
++                    if (paperdoll == "" && Options.PaperdollOrder[1][z] == Options.Equipment.HairSlot)
++                         {
++                        paperdoll = Globals.Me.CustomSpriteLayers[(int)Enums.CustomSpriteLayers.Hair];
++                        type = GameContentManager.TextureType.Hair;
++                         }
+ 
+                     if (string.IsNullOrWhiteSpace(paperdoll) && !string.IsNullOrWhiteSpace(PaperdollTextures[z]) && Options.PaperdollOrder[1][z] != "Player")
+                     {
+@@ -241,7 +247,7 @@ public void Update()
+                     else if (paperdoll != "" && paperdoll != PaperdollTextures[z])
+                     {
+                         var paperdollTex = Globals.ContentManager.GetTexture(
+-                            GameContentManager.TextureType.Paperdoll, paperdoll
++                           type, paperdoll
+                         );
+ 
+                         PaperdollPanels[z].Texture = paperdollTex;
+diff --git a/Intersect.Client/Interface/Game/EntityPanel/EntityBox.cs b/Intersect.Client/Interface/Game/EntityPanel/EntityBox.cs
+index 8329c011..ef0dc94b 100644
+--- a/Intersect.Client/Interface/Game/EntityPanel/EntityBox.cs
++++ b/Intersect.Client/Interface/Game/EntityPanel/EntityBox.cs
+@@ -846,6 +846,7 @@ private void UpdateImage()
+                 for (var z = 0; z < Options.PaperdollOrder[1].Count; z++)
+                 {
+                     var paperdoll = "";
++                    var type = GameContentManager.TextureType.Paperdoll;
+                     if (Options.EquipmentSlots.IndexOf(Options.PaperdollOrder[1][z]) > -1 &&
+                         equipment.Length == Options.EquipmentSlots.Count)
+                     {
+@@ -873,6 +874,12 @@ private void UpdateImage()
+                         continue;
+                     }
+ 
++                    if (MyEntity is Player && paperdoll == "" && Options.PaperdollOrder[1][z] == Options.Equipment.HairSlot)
++                                             {
++                         paperdoll = ((Player)MyEntity).CustomSpriteLayers[(int)Enums.CustomSpriteLayers.Hair];
++                         type = GameContentManager.TextureType.Hair;
++                                             }
++
+                     if (paperdoll == "" && PaperdollTextures[n] != "")
+                     {
+                         PaperdollPanels[n].Texture = null;
+@@ -882,7 +889,7 @@ private void UpdateImage()
+                     else if (paperdoll != "" && paperdoll != PaperdollTextures[n])
+                     {
+                         var paperdollTex = Globals.ContentManager.GetTexture(
+-                            GameContentManager.TextureType.Paperdoll, paperdoll
++                            type, paperdoll
+                         );
+ 
+                         PaperdollPanels[n].Texture = paperdollTex;
+diff --git a/Intersect.Client/Interface/Menu/CreateCharacterWindow.cs b/Intersect.Client/Interface/Menu/CreateCharacterWindow.cs
+index 103888bb..b5c37350 100644
+--- a/Intersect.Client/Interface/Menu/CreateCharacterWindow.cs
++++ b/Intersect.Client/Interface/Menu/CreateCharacterWindow.cs
+@@ -26,6 +26,8 @@ public class CreateCharacterWindow
+ 
+         private ImagePanel mCharacterPortrait;
+ 
++        private ImagePanel mCharacterHair;
++
+         //Image
+         private string mCharacterPortraitImg = "";
+ 
+@@ -48,6 +50,8 @@ public class CreateCharacterWindow
+ 
+         private int mDisplaySpriteIndex = -1;
+ 
++        private int[] mDisplayCustomSpriteLayerIndex = new int[(int)Enums.CustomSpriteLayers.CustomCount];
++
+         private LabeledCheckBox mFemaleChk;
+ 
+         private List<KeyValuePair<int, ClassSprite>> mFemaleSprites = new List<KeyValuePair<int, ClassSprite>>();
+@@ -68,10 +72,17 @@ public class CreateCharacterWindow
+         //Class Info
+         private List<KeyValuePair<int, ClassSprite>> mMaleSprites = new List<KeyValuePair<int, ClassSprite>>();
+ 
++        private Dictionary<Enums.CustomSpriteLayers, List<KeyValuePair<int, CustomSpriteLayer>>> mMaleCustomSpriteLayers = new Dictionary<Enums.CustomSpriteLayers, List<KeyValuePair<int, CustomSpriteLayer>>>();
++        private Dictionary<Enums.CustomSpriteLayers, List<KeyValuePair<int, CustomSpriteLayer>>> mFemaleCustomSpriteLayers = new Dictionary<Enums.CustomSpriteLayers, List<KeyValuePair<int, CustomSpriteLayer>>>();
++        
+         private Button mNextSpriteButton;
+ 
+         private Button mPrevSpriteButton;
+ 
++        private Button mNextHairButton;
++
++        private Button mPrevHairButton;
++
+         private SelectCharacterWindow mSelectCharacterWindow;
+ 
+         //Init
+@@ -133,6 +144,11 @@ SelectCharacterWindow selectCharacterWindow
+             mCharacterPortrait = new ImagePanel(mCharacterContainer, "CharacterPortait");
+             mCharacterPortrait.SetSize(48, 48);
+ 
++            // Hair Sprite
++            mCharacterHair = new ImagePanel(mCharacterContainer, "CharacterHair");
++            mCharacterHair.SetSize(48, 48);
++
++
+             //Next Sprite Button
+             mNextSpriteButton = new Button(mCharacterContainer, "NextSpriteButton");
+             mNextSpriteButton.Clicked += _nextSpriteButton_Clicked;
+@@ -141,6 +157,15 @@ SelectCharacterWindow selectCharacterWindow
+             mPrevSpriteButton = new Button(mCharacterContainer, "PreviousSpriteButton");
+             mPrevSpriteButton.Clicked += _prevSpriteButton_Clicked;
+ 
++
++            //Next Hair Button
++            mNextHairButton = new Button(mCharacterContainer, "NextHairButton");
++            mNextHairButton.Clicked += _nextHairButton_Clicked;
++            
++            //Prev Hair Button
++            mPrevHairButton = new Button(mCharacterContainer, "PreviousHairButton");
++            mPrevHairButton.Clicked += _prevHairButton_Clicked;
++
+             //Class Background
+             mGenderBackground = new ImagePanel(mCharCreationPanel, "GenderPanel");
+ 
+@@ -224,6 +249,7 @@ private void UpdateDisplay()
+             if (GetClass() != null && mDisplaySpriteIndex != -1)
+             {
+                 mCharacterPortrait.IsHidden = false;
++                mCharacterHair.IsHidden = false;
+                 if (GetClass().Sprites.Count > 0)
+                 {
+                     if (mMaleChk.IsChecked)
+@@ -232,12 +258,24 @@ private void UpdateDisplay()
+                             GameContentManager.TextureType.Face, mMaleSprites[mDisplaySpriteIndex].Value.Face
+                         );
+ 
++
+                         if (mCharacterPortrait.Texture == null)
+                         {
+                             mCharacterPortrait.Texture = Globals.ContentManager.GetTexture(
+                                 GameContentManager.TextureType.Entity, mMaleSprites[mDisplaySpriteIndex].Value.Sprite
+                             );
+ 
++                            if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] != -1)
++                                                             {
++                                 mCharacterHair.Texture = Globals.ContentManager.GetTexture(
++                                 GameContentManager.TextureType.Hair, mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair][mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair]].Value.Texture
++                                                                 );
++                                                             }
++                                                         else
++                                                            {
++                                mCharacterHair.Texture = null;
++                                                 }
++
+                             isFace = false;
+                         }
+                     }
+@@ -253,7 +291,17 @@ private void UpdateDisplay()
+                                 GameContentManager.TextureType.Entity, mFemaleSprites[mDisplaySpriteIndex].Value.Sprite
+                             );
+ 
+-                            isFace = false;
++                            if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] != -1)
++                                                            {
++                                 mCharacterHair.Texture = Globals.ContentManager.GetTexture(
++                                 GameContentManager.TextureType.Hair, mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair][mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair]].Value.Texture
++                                                                 );
++                                                             }
++                                                       else
++                                                             {
++                                 mCharacterHair.Texture = null;
++                                                             }
++                                 isFace = false;
+                         }
+                     }
+ 
+@@ -270,15 +318,29 @@ private void UpdateDisplay()
+                                 mCharacterContainer.InnerHeight / (double) mCharacterPortrait.Texture.GetHeight()
+                             );
+ 
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetTextureRect(
++                           0, 0, mCharacterHair.Texture.GetWidth(), mCharacterHair.Texture.GetHeight()
++                             );
++
+                             mCharacterPortrait.SetSize(
+                                 (int) (mCharacterPortrait.Texture.GetWidth() * scale),
+                                 (int) (mCharacterPortrait.Texture.GetHeight() * scale)
+                             );
+ 
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetSize(
++                                (int)(mCharacterHair.Texture.GetWidth() * scale),
++                                (int)(mCharacterHair.Texture.GetHeight() * scale)
++                             );
++
+                             mCharacterPortrait.SetPosition(
+                                 mCharacterContainer.Width / 2 - mCharacterPortrait.Width / 2,
+                                 mCharacterContainer.Height / 2 - mCharacterPortrait.Height / 2
+                             );
++
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetPosition(
++                                mCharacterContainer.Width / 2 - mCharacterHair.Width / 2,
++                                mCharacterContainer.Height / 2 - mCharacterHair.Height / 2
++                             );
+                         }
+                         else
+                         {
+@@ -287,14 +349,26 @@ private void UpdateDisplay()
+                                 mCharacterPortrait.Texture.GetHeight() / Options.Instance.Sprites.Directions
+                             );
+ 
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetTextureRect(
++                                0, 0, mCharacterHair.Texture.GetWidth() / Options.Instance.Sprites.NormalFrames,
++                                mCharacterHair.Texture.GetHeight() / Options.Instance.Sprites.Directions
++                            );
+                             mCharacterPortrait.SetSize(
+                                 mCharacterPortrait.Texture.GetWidth() / Options.Instance.Sprites.NormalFrames, mCharacterPortrait.Texture.GetHeight() / Options.Instance.Sprites.Directions
+                             );
+-
++                            
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetSize(
++                               mCharacterHair.Texture.GetWidth() / Options.Instance.Sprites.NormalFrames, mCharacterHair.Texture.GetHeight() / Options.Instance.Sprites.Directions
++                             );
+                             mCharacterPortrait.SetPosition(
+                                 mCharacterContainer.Width / 2 - mCharacterPortrait.Width / 2,
+                                 mCharacterContainer.Height / 2 - mCharacterPortrait.Height / 2
+                             );
++
++                            if (mCharacterHair.Texture != null) mCharacterHair.SetPosition(
++                                mCharacterContainer.Width / 2 - mCharacterHair.Width / 2,
++                                mCharacterContainer.Height / 2 - mCharacterHair.Height / 2
++                             );
+                         }
+                     }
+                 }
+@@ -302,6 +376,7 @@ private void UpdateDisplay()
+             else
+             {
+                 mCharacterPortrait.IsHidden = true;
++                mCharacterHair.IsHidden = true;
+             }
+         }
+ 
+@@ -339,6 +414,10 @@ private void LoadClass()
+             mMaleSprites.Clear();
+             mFemaleSprites.Clear();
+             mDisplaySpriteIndex = -1;
++            for (var i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                   {
++                mDisplayCustomSpriteLayerIndex[i] = -1;
++                    }
+             if (cls != null)
+             {
+                 for (var i = 0; i < cls.Sprites.Count; i++)
+@@ -352,6 +431,28 @@ private void LoadClass()
+                         mFemaleSprites.Add(new KeyValuePair<int, ClassSprite>(i, cls.Sprites[i]));
+                     }
+                 }
++
++                // Clear our custom sprite layers if they exist, and fill them again.
++                mMaleCustomSpriteLayers.Clear();
++                mFemaleCustomSpriteLayers.Clear();
++                                 for (var i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                                     {
++                     var layer = (Enums.CustomSpriteLayers)i;
++                     mMaleCustomSpriteLayers.Add(layer, new List<KeyValuePair<int, CustomSpriteLayer>>());
++                     mFemaleCustomSpriteLayers.Add(layer, new List<KeyValuePair<int, CustomSpriteLayer>>());
++                                         for (var n = 0; n < cls.CustomSpriteLayers[layer].Count; n++)
++                                         {
++                                             if (cls.CustomSpriteLayers[layer][n].Gender == 0)
++                                             {
++                     mMaleCustomSpriteLayers[layer].Add(new KeyValuePair<int, CustomSpriteLayer>(n, cls.CustomSpriteLayers[layer][n]));
++                                             }
++                                     else
++                                             {
++                     mFemaleCustomSpriteLayers[layer].Add(new KeyValuePair<int, CustomSpriteLayer>(n, cls.CustomSpriteLayers[layer][n]));
++                                           }
++                                        }
++                                }
++
+             }
+ 
+             ResetSprite();
+@@ -361,6 +462,8 @@ private void ResetSprite()
+         {
+             mNextSpriteButton.IsHidden = true;
+             mPrevSpriteButton.IsHidden = true;
++            mNextHairButton.IsHidden = true;
++            mPrevHairButton.IsHidden = true;
+             if (mMaleChk.IsChecked)
+             {
+                 if (mMaleSprites.Count > 0)
+@@ -376,6 +479,20 @@ private void ResetSprite()
+                 {
+                     mDisplaySpriteIndex = -1;
+                 }
++                // Hair
++                if (mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++                                     {
++                 mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = 0;
++                      if (mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 1)
++                                      {
++                 mNextHairButton.IsHidden = false;
++                 mPrevHairButton.IsHidden = false;
++                                      }
++                                 }
++                                 else
++                                 {
++                   mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++                                   }
+             }
+             else
+             {
+@@ -392,6 +509,20 @@ private void ResetSprite()
+                 {
+                     mDisplaySpriteIndex = -1;
+                 }
++                // Hair
++                                if (mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++                                 {
++                mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = 0;
++                       if (mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 1)
++                                     {
++                 mNextHairButton.IsHidden = false;
++                mPrevHairButton.IsHidden = false;
++                                     }
++                               }
++                               else
++                                 {
++                 mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++                                }
+             }
+         }
+ 
+@@ -430,7 +561,76 @@ private void _prevSpriteButton_Clicked(Base sender, ClickedEventArgs arguments)
+             UpdateDisplay();
+         }
+ 
+-        private void _nextSpriteButton_Clicked(Base sender, ClickedEventArgs arguments)
++        private void _prevHairButton_Clicked(Base sender, ClickedEventArgs arguments)
++         {
++             mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair]--;
++             if (mMaleChk.IsChecked)
++             {
++                 if (mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++                 {
++                     if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] == -1)
++                     {
++                         mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count - 1;
++                     }
++                 }
++                 else
++                     {
++     mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++                     }
++             }
++             else
++               {
++                   if (mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++              {
++                             if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] == -1)
++                            {
++            mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count - 1;
++                 }
++             }
++              else
++             {
++         mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++            }
++           }
++UpdateDisplay();
++         }
++
++         private void _nextHairButton_Clicked(Base sender, ClickedEventArgs arguments)
++{
++     mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair]++;
++                 if (mMaleChk.IsChecked)
++                 {
++                    if (mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++                      {
++                             if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] >= mMaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count)
++                                {
++            mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = 0;
++                               }
++                         }
++                       else
++                         {
++           mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++                       }
++                   }
++                else
++                    {
++                       if (mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count > 0)
++                         {
++                             if (mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] >= mFemaleCustomSpriteLayers[Enums.CustomSpriteLayers.Hair].Count)
++                            {
++               mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = 0;
++                                   }
++                        }
++                 else
++                           {
++           mDisplayCustomSpriteLayerIndex[(int)Enums.CustomSpriteLayers.Hair] = -1;
++                         }
++                  }
++         UpdateDisplay();
++             }
++
++
++private void _nextSpriteButton_Clicked(Base sender, ClickedEventArgs arguments)
+         {
+             mDisplaySpriteIndex++;
+             if (mMaleChk.IsChecked)
+@@ -474,16 +674,29 @@ void TryCreateCharacter(int gender)
+ 
+             if (FieldChecking.IsValidUsername(mCharnameTextbox.Text, Strings.Regex.username))
+             {
++                var customSpriteLayers = new int[(int)Enums.CustomSpriteLayers.CustomCount];
+                 if (mMaleChk.IsChecked)
+                 {
++                    // Add our custom layers to the packet.
++                      for (var i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                                        {
++                     var layer = (Enums.CustomSpriteLayers)i;
++                     customSpriteLayers[i] = mDisplayCustomSpriteLayerIndex[i] != -1 ? mMaleCustomSpriteLayers[layer][mDisplayCustomSpriteLayerIndex[i]].Key : -1;
++                                       }
+                     PacketSender.SendCreateCharacter(
+-                        mCharnameTextbox.Text, GetClass().Id, mMaleSprites[mDisplaySpriteIndex].Key
++                        mCharnameTextbox.Text, GetClass().Id, mMaleSprites[mDisplaySpriteIndex].Key, customSpriteLayers
+                     );
+                 }
+                 else
+                 {
++                    // Add our custom layers to the packet.
++                                        for (var i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                                        {
++                     var layer = (Enums.CustomSpriteLayers)i;
++                     customSpriteLayers[i] = mDisplayCustomSpriteLayerIndex[i] != -1 ? mFemaleCustomSpriteLayers[layer][mDisplayCustomSpriteLayerIndex[i]].Key : -1;
++                                         }
+                     PacketSender.SendCreateCharacter(
+-                        mCharnameTextbox.Text, GetClass().Id, mFemaleSprites[mDisplaySpriteIndex].Key
++                        mCharnameTextbox.Text, GetClass().Id, mFemaleSprites[mDisplaySpriteIndex].Key, customSpriteLayers
+                     );
+                 }
+ 
+diff --git a/Intersect.Client/Interface/Menu/SelectCharacterWindow.cs b/Intersect.Client/Interface/Menu/SelectCharacterWindow.cs
+index 2b5f01bf..f03f5735 100644
+--- a/Intersect.Client/Interface/Menu/SelectCharacterWindow.cs
++++ b/Intersect.Client/Interface/Menu/SelectCharacterWindow.cs
+@@ -268,8 +268,28 @@ private void UpdateDisplay()
+                         {
+                             if (mPaperdollPortraits[i] != mCharacterPortrait)
+                             {
++                                var texture = String.Empty;
++                                GameContentManager.TextureType type;
++                                  if (Options.EquipmentSlots.IndexOf(Options.PaperdollOrder[1][i]) == Options.EquipmentSlots.IndexOf(Options.Equipment.HairSlot))
++                                                                 {
++                                                                    if (Characters[mSelectedChar].Equipment[i] != String.Empty && Characters[mSelectedChar].Equipment[i] != null)
++                                                                     {
++                                 texture = Characters[mSelectedChar].Equipment[i];
++                                 type = GameContentManager.TextureType.Paperdoll;
++                                                                     }
++                                                                     else
++                                                                     {
++                                 texture = Characters[mSelectedChar].CustomSpriteLayers[(int)Enums.CustomSpriteLayers.Hair];
++                                 type = GameContentManager.TextureType.Hair;
++                                                                     }
++                                                               }
++                                                            else
++                                                               {
++                                 texture = Characters[mSelectedChar].Equipment[i];
++                                 type = GameContentManager.TextureType.Paperdoll;
++                                               }
+                                 mPaperdollPortraits[i].Texture = Globals.ContentManager.GetTexture(
+-                                    GameContentManager.TextureType.Paperdoll, Characters[mSelectedChar].Equipment[i]
++                                    type, texture
+                                 );
+ 
+                                 if (mPaperdollPortraits[i].Texture != null)
+@@ -428,6 +448,8 @@ public class Character
+ 
+         public string[] Equipment = new string[Options.EquipmentSlots.Count + 1];
+ 
++        public string[] CustomSpriteLayers = new string[(int)Enums.CustomSpriteLayers.CustomCount];
++
+         public bool Exists = false;
+ 
+         public string Face = "";
+@@ -452,9 +474,11 @@ public Character(Guid id)
+             string face,
+             int level,
+             string charClass,
+-            string[] equipment
++            string[] equipment,
++            string[] customspritelayers
+         )
+         {
++            CustomSpriteLayers = customspritelayers;
+             Equipment = equipment;
+             Id = id;
+             Name = name;
+diff --git a/Intersect.Client/MonoGame/File Management/MonoContentManager.cs b/Intersect.Client/MonoGame/File Management/MonoContentManager.cs
+index 4a641475..e64a8c6b 100644
+--- a/Intersect.Client/MonoGame/File Management/MonoContentManager.cs	
++++ b/Intersect.Client/MonoGame/File Management/MonoContentManager.cs	
+@@ -159,6 +159,11 @@ public override void LoadEntities()
+             LoadTextureGroup("entities", mEntityDict);
+         }
+ 
++        public override void LoadHairs()
++         {
++            LoadTextureGroup("hairs", mHairDict);
++         }
++
+         public override void LoadSpells()
+         {
+             LoadTextureGroup("spells", mSpellDict);
+diff --git a/Intersect.Client/Networking/PacketHandler.cs b/Intersect.Client/Networking/PacketHandler.cs
+index 3e8e4ec6..ab4cb04d 100644
+--- a/Intersect.Client/Networking/PacketHandler.cs
++++ b/Intersect.Client/Networking/PacketHandler.cs
+@@ -1213,6 +1213,19 @@ public void HandlePacket(IPacketSender packetSender, EquipmentPacket packet)
+             }
+         }
+ 
++        public void HandlePacket(IPacketSender packetSender, CustomSpriteLayersPacket packet)
++         {
++             var entityId = packet.EntityId;
++             if (Globals.Entities.ContainsKey(entityId))
++             {
++                 var entity = Globals.Entities[entityId];
++                 if (entity != null)
++                 {
++                     ((Player) entity).CustomSpriteLayers = packet.CustomSpriteLayers;
++                 }
++             }
++         }
++
+         //StatPointsPacket
+         public void HandlePacket(IPacketSender packetSender, StatPointsPacket packet)
+         {
+@@ -1950,7 +1963,7 @@ public void HandlePacket(IPacketSender packetSender, CharactersPacket packet)
+             foreach (var chr in packet.Characters)
+             {
+                 characters.Add(
+-                    new Character(chr.Id, chr.Name, chr.Sprite, chr.Face, chr.Level, chr.ClassName, chr.Equipment)
++                    new Character(chr.Id, chr.Name, chr.Sprite, chr.Face, chr.Level, chr.ClassName, chr.Equipment, chr.CustomSpriteLayers)
+                 );
+             }
+ 
+diff --git a/Intersect.Client/Networking/PacketSender.cs b/Intersect.Client/Networking/PacketSender.cs
+index 14a5f704..15ce3011 100644
+--- a/Intersect.Client/Networking/PacketSender.cs
++++ b/Intersect.Client/Networking/PacketSender.cs
+@@ -106,9 +106,9 @@ public static void SendCreateAccount(string username, string password, string em
+             Network.SendPacket(new CreateAccountPacket(username.Trim(), password.Trim(), email.Trim()));
+         }
+ 
+-        public static void SendCreateCharacter(string name, Guid classId, int sprite)
++        public static void SendCreateCharacter(string name, Guid classId, int sprite, int[] customSpriteLayers)
+         {
+-            Network.SendPacket(new CreateCharacterPacket(name, classId, sprite));
++            Network.SendPacket(new CreateCharacterPacket(name, classId, sprite, customSpriteLayers));
+         }
+ 
+         public static void SendPickupItem(Guid mapId, int tileIndex, Guid uniqueId)
+diff --git a/Intersect.Editor/Content/ContentManager.cs b/Intersect.Editor/Content/ContentManager.cs
+index 8df3d00d..2807b4cd 100644
+--- a/Intersect.Editor/Content/ContentManager.cs
++++ b/Intersect.Editor/Content/ContentManager.cs
+@@ -49,6 +49,8 @@ public enum TextureType
+ 
+             Misc,
+ 
++            Hairs
++
+         }
+ 
+         //Game Content
+@@ -77,6 +79,8 @@ public enum TextureType
+ 
+         static IDictionary<string, Texture> sMiscDict = new Dictionary<string, Texture>();
+ 
++        static IDictionary<string, Texture> sHairsDict = new Dictionary<string, Texture>();
++
+         static IDictionary<string, object> sMusicDict = new Dictionary<string, object>();
+ 
+         static IDictionary<string, Texture> sPaperdollDict = new Dictionary<string, Texture>();
+@@ -136,6 +140,7 @@ public static void LoadEditorContent()
+             LoadFaces();
+             LoadItems();
+             LoadMisc();
++            LoadHairs();
+             LoadShaders();
+             LoadSounds();
+             LoadMusic();
+@@ -324,6 +329,12 @@ private static void LoadMisc()
+             LoadTextureGroup("misc", sMiscDict);
+         }
+ 
++        private static void LoadHairs()
++        {
++            LoadTextureGroup("hairs", sHairsDict);
++        }
++
++
+         public static void LoadShaders()
+         {
+             sShaderDict.Clear();
+@@ -452,6 +463,10 @@ public static Texture2D GetTexture(TextureType type, string name)
+                 case TextureType.Misc:
+                     textureDict = sMiscDict;
+ 
++                    break;
++                case TextureType.Hairs:
++                    textureDict = sHairsDict;
++
+                     break;
+                 default:
+                     return null;
+@@ -580,6 +595,10 @@ public static string[] GetTextureNames(TextureType type)
+                 case TextureType.Misc:
+                     textureDict = sMiscDict;
+ 
++                    break;
++                case TextureType.Hairs:
++                    textureDict = sHairsDict;
++
+                     break;
+                 default:
+                     return null;
+diff --git a/Intersect.Editor/Forms/Editors/frmClass.Designer.cs b/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
+index 895be50d..604f8727 100644
+--- a/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
++++ b/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
+@@ -31,10 +31,15 @@ protected override void Dispose(bool disposing)
+         private void InitializeComponent()
+         {
+             this.components = new System.ComponentModel.Container();
++
+             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle1 = new System.Windows.Forms.DataGridViewCellStyle();
+             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle2 = new System.Windows.Forms.DataGridViewCellStyle();
+             System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle3 = new System.Windows.Forms.DataGridViewCellStyle();
+-            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FrmClass));
++        
++            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle4 = new System.Windows.Forms.DataGridViewCellStyle();
++            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle5 = new System.Windows.Forms.DataGridViewCellStyle();
++            System.Windows.Forms.DataGridViewCellStyle dataGridViewCellStyle6 = new System.Windows.Forms.DataGridViewCellStyle();
++			 System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(FrmClass));
+             this.grpClasses = new DarkUI.Controls.DarkGroupBox();
+             this.btnClearSearch = new DarkUI.Controls.DarkButton();
+             this.txtSearch = new DarkUI.Controls.DarkTextBox();
+@@ -90,6 +95,16 @@ private void InitializeComponent()
+             this.lblX = new System.Windows.Forms.Label();
+             this.lblMap = new System.Windows.Forms.Label();
+             this.pnlContainer = new System.Windows.Forms.Panel();
++            this.grpHair = new DarkUI.Controls.DarkGroupBox();
++            this.btnRemoveHair = new DarkUI.Controls.DarkButton();
++            this.BtnAddHair = new DarkUI.Controls.DarkButton();
++            this.grpGender2 = new DarkUI.Controls.DarkGroupBox();
++            this.rbMale2 = new DarkUI.Controls.DarkRadioButton();
++            this.rbFemale2 = new DarkUI.Controls.DarkRadioButton();
++            this.lstHair = new System.Windows.Forms.ListBox();
++            this.lblHair = new System.Windows.Forms.Label();
++            this.picHair = new System.Windows.Forms.PictureBox();
++            this.cmbHair = new DarkUI.Controls.DarkComboBox();
+             this.grpSpawnItems = new DarkUI.Controls.DarkGroupBox();
+             this.btnSpawnItemRemove = new DarkUI.Controls.DarkButton();
+             this.btnSpawnItemAdd = new DarkUI.Controls.DarkButton();
+@@ -192,6 +207,9 @@ private void InitializeComponent()
+             ((System.ComponentModel.ISupportInitialize)(this.nudY)).BeginInit();
+             ((System.ComponentModel.ISupportInitialize)(this.nudX)).BeginInit();
+             this.pnlContainer.SuspendLayout();
++            this.grpHair.SuspendLayout();
++            this.grpGender2.SuspendLayout();
++            ((System.ComponentModel.ISupportInitialize)(this.picHair)).BeginInit();
+             this.grpSpawnItems.SuspendLayout();
+             ((System.ComponentModel.ISupportInitialize)(this.nudSpawnItemAmount)).BeginInit();
+             this.grpCombat.SuspendLayout();
+@@ -723,10 +741,10 @@ private void InitializeComponent()
+             this.cmbSprite.FormattingEnabled = true;
+             this.cmbSprite.Items.AddRange(new object[] {
+             "None"});
+-            this.cmbSprite.Location = new System.Drawing.Point(313, 30);
++            this.cmbSprite.Location = new System.Drawing.Point(384, 33);
+             this.cmbSprite.Margin = new System.Windows.Forms.Padding(2);
+             this.cmbSprite.Name = "cmbSprite";
+-            this.cmbSprite.Size = new System.Drawing.Size(104, 21);
++            this.cmbSprite.Size = new System.Drawing.Size(151, 21);
+             this.cmbSprite.TabIndex = 16;
+             this.cmbSprite.Text = "None";
+             this.cmbSprite.TextPadding = new System.Windows.Forms.Padding(2);
+@@ -735,7 +753,7 @@ private void InitializeComponent()
+             // lblSprite
+             // 
+             this.lblSprite.AutoSize = true;
+-            this.lblSprite.Location = new System.Drawing.Point(263, 15);
++            this.lblSprite.Location = new System.Drawing.Point(388, 14);
+             this.lblSprite.Margin = new System.Windows.Forms.Padding(2, 0, 2, 0);
+             this.lblSprite.Name = "lblSprite";
+             this.lblSprite.Size = new System.Drawing.Size(37, 13);
+@@ -745,10 +763,10 @@ private void InitializeComponent()
+             // picSprite
+             // 
+             this.picSprite.BackColor = System.Drawing.Color.Black;
+-            this.picSprite.Location = new System.Drawing.Point(266, 30);
++            this.picSprite.Location = new System.Drawing.Point(255, 14);
+             this.picSprite.Margin = new System.Windows.Forms.Padding(2);
+             this.picSprite.Name = "picSprite";
+-            this.picSprite.Size = new System.Drawing.Size(43, 42);
++            this.picSprite.Size = new System.Drawing.Size(125, 139);
+             this.picSprite.TabIndex = 14;
+             this.picSprite.TabStop = false;
+             // 
+@@ -768,7 +786,7 @@ private void InitializeComponent()
+             this.grpSpells.Margin = new System.Windows.Forms.Padding(2);
+             this.grpSpells.Name = "grpSpells";
+             this.grpSpells.Padding = new System.Windows.Forms.Padding(2);
+-            this.grpSpells.Size = new System.Drawing.Size(227, 175);
++            this.grpSpells.Size = new System.Drawing.Size(246, 175);
+             this.grpSpells.TabIndex = 21;
+             this.grpSpells.TabStop = false;
+             this.grpSpells.Text = "Spells";
+@@ -803,7 +821,7 @@ private void InitializeComponent()
+             this.cmbSpell.FormattingEnabled = true;
+             this.cmbSpell.Location = new System.Drawing.Point(108, 28);
+             this.cmbSpell.Name = "cmbSpell";
+-            this.cmbSpell.Size = new System.Drawing.Size(108, 21);
++            this.cmbSpell.Size = new System.Drawing.Size(133, 21);
+             this.cmbSpell.TabIndex = 26;
+             this.cmbSpell.Text = null;
+             this.cmbSpell.TextPadding = new System.Windows.Forms.Padding(2);
+@@ -1020,6 +1038,7 @@ private void InitializeComponent()
+             // pnlContainer
+             // 
+             this.pnlContainer.AutoScroll = true;
++            this.pnlContainer.Controls.Add(this.grpHair);
+             this.pnlContainer.Controls.Add(this.grpSpawnItems);
+             this.pnlContainer.Controls.Add(this.grpCombat);
+             this.pnlContainer.Controls.Add(this.grpRegen);
+@@ -1033,10 +1052,147 @@ private void InitializeComponent()
+             this.pnlContainer.Location = new System.Drawing.Point(147, 36);
+             this.pnlContainer.Margin = new System.Windows.Forms.Padding(2);
+             this.pnlContainer.Name = "pnlContainer";
+-            this.pnlContainer.Size = new System.Drawing.Size(780, 355);
++            this.pnlContainer.Size = new System.Drawing.Size(1193, 355);
+             this.pnlContainer.TabIndex = 28;
+             this.pnlContainer.Visible = false;
+             // 
++            // grpHair
++            // 
++            this.grpHair.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
++            this.grpHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
++            this.grpHair.Controls.Add(this.btnRemoveHair);
++            this.grpHair.Controls.Add(this.BtnAddHair);
++            this.grpHair.Controls.Add(this.grpGender2);
++            this.grpHair.Controls.Add(this.lstHair);
++            this.grpHair.Controls.Add(this.lblHair);
++            this.grpHair.Controls.Add(this.picHair);
++            this.grpHair.Controls.Add(this.cmbHair);
++            this.grpHair.ForeColor = System.Drawing.Color.Gainsboro;
++            this.grpHair.Location = new System.Drawing.Point(802, 14);
++            this.grpHair.Name = "grpHair";
++            this.grpHair.Size = new System.Drawing.Size(367, 336);
++            this.grpHair.TabIndex = 38;
++            this.grpHair.TabStop = false;
++            this.grpHair.Text = "Hairs";
++            // 
++            // btnRemoveHair
++            // 
++            this.btnRemoveHair.Location = new System.Drawing.Point(8, 42);
++            this.btnRemoveHair.Margin = new System.Windows.Forms.Padding(2);
++            this.btnRemoveHair.Name = "btnRemoveHair";
++            this.btnRemoveHair.Padding = new System.Windows.Forms.Padding(5);
++            this.btnRemoveHair.Size = new System.Drawing.Size(44, 19);
++            this.btnRemoveHair.TabIndex = 22;
++            this.btnRemoveHair.Text = "-";
++            this.btnRemoveHair.Click += new System.EventHandler(this.btnRemoveHair_Click);
++            // 
++            // BtnAddHair
++            // 
++            this.BtnAddHair.Location = new System.Drawing.Point(9, 19);
++            this.BtnAddHair.Margin = new System.Windows.Forms.Padding(2);
++            this.BtnAddHair.Name = "BtnAddHair";
++            this.BtnAddHair.Padding = new System.Windows.Forms.Padding(5);
++            this.BtnAddHair.Size = new System.Drawing.Size(43, 19);
++            this.BtnAddHair.TabIndex = 23;
++            this.BtnAddHair.Text = "+";
++            this.BtnAddHair.Click += new System.EventHandler(this.BtnAddHair_Click);
++            // 
++            // grpGender2
++            // 
++            this.grpGender2.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
++            this.grpGender2.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
++            this.grpGender2.Controls.Add(this.rbMale2);
++            this.grpGender2.Controls.Add(this.rbFemale2);
++            this.grpGender2.ForeColor = System.Drawing.Color.Gainsboro;
++            this.grpGender2.Location = new System.Drawing.Point(194, 14);
++            this.grpGender2.Name = "grpGender2";
++            this.grpGender2.Size = new System.Drawing.Size(151, 53);
++            this.grpGender2.TabIndex = 20;
++            this.grpGender2.TabStop = false;
++            this.grpGender2.Text = "Gender";
++            // 
++            // rbMale2
++            // 
++            this.rbMale2.AutoSize = true;
++            this.rbMale2.Checked = true;
++            this.rbMale2.Location = new System.Drawing.Point(5, 18);
++            this.rbMale2.Margin = new System.Windows.Forms.Padding(2);
++            this.rbMale2.Name = "rbMale2";
++            this.rbMale2.Size = new System.Drawing.Size(48, 17);
++            this.rbMale2.TabIndex = 18;
++            this.rbMale2.TabStop = true;
++            this.rbMale2.Text = "Male";
++            this.rbMale2.Click += new System.EventHandler(this.rbMale2_Click);
++            // 
++            // rbFemale2
++            // 
++            this.rbFemale2.AutoSize = true;
++            this.rbFemale2.Location = new System.Drawing.Point(81, 20);
++            this.rbFemale2.Margin = new System.Windows.Forms.Padding(2);
++            this.rbFemale2.Name = "rbFemale2";
++            this.rbFemale2.Size = new System.Drawing.Size(59, 17);
++            this.rbFemale2.TabIndex = 19;
++            this.rbFemale2.Text = "Female";
++            this.rbFemale2.Click += new System.EventHandler(this.rbFemale2_Click);
++            // 
++            // lstHair
++            // 
++            this.lstHair.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(60)))), ((int)(((byte)(63)))), ((int)(((byte)(65)))));
++            this.lstHair.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
++            this.lstHair.ForeColor = System.Drawing.Color.Gainsboro;
++            this.lstHair.FormattingEnabled = true;
++            this.lstHair.Location = new System.Drawing.Point(57, 16);
++            this.lstHair.Margin = new System.Windows.Forms.Padding(2);
++            this.lstHair.Name = "lstHair";
++            this.lstHair.Size = new System.Drawing.Size(115, 275);
++            this.lstHair.TabIndex = 18;
++            this.lstHair.Click += new System.EventHandler(this.lstHair_Click);
++            // 
++            // lblHair
++            // 
++            this.lblHair.AutoSize = true;
++            this.lblHair.Location = new System.Drawing.Point(191, 73);
++            this.lblHair.Margin = new System.Windows.Forms.Padding(2, 0, 2, 0);
++            this.lblHair.Name = "lblHair";
++            this.lblHair.Size = new System.Drawing.Size(29, 13);
++            this.lblHair.TabIndex = 15;
++            this.lblHair.Text = "Hair:";
++            // 
++            // picHair
++            // 
++            this.picHair.BackColor = System.Drawing.Color.Black;
++            this.picHair.Location = new System.Drawing.Point(194, 127);
++            this.picHair.Margin = new System.Windows.Forms.Padding(2);
++            this.picHair.Name = "picHair";
++            this.picHair.Size = new System.Drawing.Size(125, 139);
++            this.picHair.TabIndex = 14;
++            this.picHair.TabStop = false;
++            // 
++            // cmbHair
++            // 
++            this.cmbHair.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(69)))), ((int)(((byte)(73)))), ((int)(((byte)(74)))));
++            this.cmbHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
++            this.cmbHair.BorderStyle = System.Windows.Forms.ButtonBorderStyle.Solid;
++            this.cmbHair.ButtonColor = System.Drawing.Color.FromArgb(((int)(((byte)(43)))), ((int)(((byte)(43)))), ((int)(((byte)(43)))));
++            this.cmbHair.ButtonIcon = ((System.Drawing.Bitmap)(resources.GetObject("cmbHair.ButtonIcon")));
++            this.cmbHair.DrawDropdownHoverOutline = false;
++            this.cmbHair.DrawFocusRectangle = false;
++            this.cmbHair.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
++            this.cmbHair.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
++            this.cmbHair.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
++            this.cmbHair.ForeColor = System.Drawing.Color.Gainsboro;
++            this.cmbHair.FormattingEnabled = true;
++            this.cmbHair.Items.AddRange(new object[] {
++            "None"});
++            this.cmbHair.Location = new System.Drawing.Point(194, 98);
++            this.cmbHair.Margin = new System.Windows.Forms.Padding(2);
++            this.cmbHair.Name = "cmbHair";
++            this.cmbHair.Size = new System.Drawing.Size(168, 21);
++            this.cmbHair.TabIndex = 26;
++            this.cmbHair.Text = "None";
++            this.cmbHair.TextPadding = new System.Windows.Forms.Padding(2);
++            this.cmbHair.SelectedIndexChanged += new System.EventHandler(this.cmbHair_SelectedIndexChanged);
++            // 
+             // grpSpawnItems
+             // 
+             this.grpSpawnItems.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
+@@ -1167,7 +1323,7 @@ private void InitializeComponent()
+             this.grpCombat.Controls.Add(this.lblAttackAnimation);
+             this.grpCombat.Controls.Add(this.lblDamage);
+             this.grpCombat.ForeColor = System.Drawing.Color.Gainsboro;
+-            this.grpCombat.Location = new System.Drawing.Point(537, 169);
++            this.grpCombat.Location = new System.Drawing.Point(565, 169);
+             this.grpCombat.Name = "grpCombat";
+             this.grpCombat.Size = new System.Drawing.Size(226, 405);
+             this.grpCombat.TabIndex = 30;
+@@ -1464,7 +1620,7 @@ private void InitializeComponent()
+             this.grpRegen.Controls.Add(this.lblManaRegen);
+             this.grpRegen.Controls.Add(this.lblRegenHint);
+             this.grpRegen.ForeColor = System.Drawing.Color.Gainsboro;
+-            this.grpRegen.Location = new System.Drawing.Point(420, 169);
++            this.grpRegen.Location = new System.Drawing.Point(439, 175);
+             this.grpRegen.Margin = new System.Windows.Forms.Padding(2);
+             this.grpRegen.Name = "grpRegen";
+             this.grpRegen.Padding = new System.Windows.Forms.Padding(2);
+@@ -1549,7 +1705,7 @@ private void InitializeComponent()
+             this.grpSprite.ForeColor = System.Drawing.Color.Gainsboro;
+             this.grpSprite.Location = new System.Drawing.Point(256, 0);
+             this.grpSprite.Name = "grpSprite";
+-            this.grpSprite.Size = new System.Drawing.Size(504, 163);
++            this.grpSprite.Size = new System.Drawing.Size(540, 163);
+             this.grpSprite.TabIndex = 28;
+             this.grpSprite.TabStop = false;
+             this.grpSprite.Text = "Sprite and Face";
+@@ -1557,7 +1713,7 @@ private void InitializeComponent()
+             // lblFace
+             // 
+             this.lblFace.AutoSize = true;
+-            this.lblFace.Location = new System.Drawing.Point(263, 75);
++            this.lblFace.Location = new System.Drawing.Point(419, 68);
+             this.lblFace.Margin = new System.Windows.Forms.Padding(2, 0, 2, 0);
+             this.lblFace.Name = "lblFace";
+             this.lblFace.Size = new System.Drawing.Size(34, 13);
+@@ -1567,10 +1723,10 @@ private void InitializeComponent()
+             // picFace
+             // 
+             this.picFace.BackColor = System.Drawing.Color.Black;
+-            this.picFace.Location = new System.Drawing.Point(266, 88);
++            this.picFace.Location = new System.Drawing.Point(449, 108);
+             this.picFace.Margin = new System.Windows.Forms.Padding(2);
+             this.picFace.Name = "picFace";
+-            this.picFace.Size = new System.Drawing.Size(64, 64);
++            this.picFace.Size = new System.Drawing.Size(37, 40);
+             this.picFace.TabIndex = 21;
+             this.picFace.TabStop = false;
+             // 
+@@ -1598,7 +1754,7 @@ private void InitializeComponent()
+             this.cmbFace.FormattingEnabled = true;
+             this.cmbFace.Items.AddRange(new object[] {
+             "None"});
+-            this.cmbFace.Location = new System.Drawing.Point(334, 88);
++            this.cmbFace.Location = new System.Drawing.Point(416, 83);
+             this.cmbFace.Margin = new System.Windows.Forms.Padding(2);
+             this.cmbFace.Name = "cmbFace";
+             this.cmbFace.Size = new System.Drawing.Size(83, 21);
+@@ -1666,21 +1822,21 @@ private void InitializeComponent()
+             this.expGrid.AllowUserToDeleteRows = false;
+             this.expGrid.AllowUserToResizeColumns = false;
+             this.expGrid.AllowUserToResizeRows = false;
+-            dataGridViewCellStyle1.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(50)))), ((int)(((byte)(53)))), ((int)(((byte)(55)))));
+-            this.expGrid.AlternatingRowsDefaultCellStyle = dataGridViewCellStyle1;
++            dataGridViewCellStyle4.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(50)))), ((int)(((byte)(53)))), ((int)(((byte)(55)))));
++            this.expGrid.AlternatingRowsDefaultCellStyle = dataGridViewCellStyle4;
+             this.expGrid.AutoSizeColumnsMode = System.Windows.Forms.DataGridViewAutoSizeColumnsMode.Fill;
+             this.expGrid.BackgroundColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
+             this.expGrid.CellBorderStyle = System.Windows.Forms.DataGridViewCellBorderStyle.None;
+             this.expGrid.ClipboardCopyMode = System.Windows.Forms.DataGridViewClipboardCopyMode.EnableWithoutHeaderText;
+             this.expGrid.ColumnHeadersBorderStyle = System.Windows.Forms.DataGridViewHeaderBorderStyle.None;
+-            dataGridViewCellStyle2.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
+-            dataGridViewCellStyle2.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
+-            dataGridViewCellStyle2.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+-            dataGridViewCellStyle2.ForeColor = System.Drawing.Color.Gainsboro;
+-            dataGridViewCellStyle2.SelectionBackColor = System.Drawing.SystemColors.Highlight;
+-            dataGridViewCellStyle2.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
+-            dataGridViewCellStyle2.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
+-            this.expGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle2;
++            dataGridViewCellStyle5.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
++            dataGridViewCellStyle5.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
++            dataGridViewCellStyle5.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
++            dataGridViewCellStyle5.ForeColor = System.Drawing.Color.Gainsboro;
++            dataGridViewCellStyle5.SelectionBackColor = System.Drawing.SystemColors.Highlight;
++            dataGridViewCellStyle5.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
++            dataGridViewCellStyle5.WrapMode = System.Windows.Forms.DataGridViewTriState.True;
++            this.expGrid.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle5;
+             this.expGrid.ColumnHeadersHeight = 24;
+             this.expGrid.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+             this.expGrid.EnableHeadersVisualStyles = false;
+@@ -1688,8 +1844,8 @@ private void InitializeComponent()
+             this.expGrid.MultiSelect = false;
+             this.expGrid.Name = "expGrid";
+             this.expGrid.RowHeadersVisible = false;
+-            dataGridViewCellStyle3.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(60)))), ((int)(((byte)(63)))), ((int)(((byte)(65)))));
+-            this.expGrid.RowsDefaultCellStyle = dataGridViewCellStyle3;
++            dataGridViewCellStyle6.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(60)))), ((int)(((byte)(63)))), ((int)(((byte)(65)))));
++            this.expGrid.RowsDefaultCellStyle = dataGridViewCellStyle6;
+             this.expGrid.Size = new System.Drawing.Size(515, 125);
+             this.expGrid.TabIndex = 0;
+             this.expGrid.CellEndEdit += new System.Windows.Forms.DataGridViewCellEventHandler(this.expGrid_CellEndEdit);
+@@ -2121,7 +2277,7 @@ private void InitializeComponent()
+             this.toolStrip.Location = new System.Drawing.Point(0, 0);
+             this.toolStrip.Name = "toolStrip";
+             this.toolStrip.Padding = new System.Windows.Forms.Padding(5, 0, 1, 0);
+-            this.toolStrip.Size = new System.Drawing.Size(929, 25);
++            this.toolStrip.Size = new System.Drawing.Size(1483, 25);
+             this.toolStrip.TabIndex = 42;
+             this.toolStrip.Text = "toolStrip1";
+             // 
+@@ -2249,7 +2405,7 @@ private void InitializeComponent()
+             this.AutoScroll = true;
+             this.AutoSize = true;
+             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
+-            this.ClientSize = new System.Drawing.Size(929, 437);
++            this.ClientSize = new System.Drawing.Size(1483, 437);
+             this.ControlBox = false;
+             this.Controls.Add(this.toolStrip);
+             this.Controls.Add(this.btnCancel);
+@@ -2287,6 +2443,11 @@ private void InitializeComponent()
+             ((System.ComponentModel.ISupportInitialize)(this.nudY)).EndInit();
+             ((System.ComponentModel.ISupportInitialize)(this.nudX)).EndInit();
+             this.pnlContainer.ResumeLayout(false);
++            this.grpHair.ResumeLayout(false);
++            this.grpHair.PerformLayout();
++            this.grpGender2.ResumeLayout(false);
++            this.grpGender2.PerformLayout();
++            ((System.ComponentModel.ISupportInitialize)(this.picHair)).EndInit();
+             this.grpSpawnItems.ResumeLayout(false);
+             this.grpSpawnItems.PerformLayout();
+             ((System.ComponentModel.ISupportInitialize)(this.nudSpawnItemAmount)).EndInit();
+@@ -2472,5 +2633,15 @@ private void InitializeComponent()
+         private System.Windows.Forms.Label lblAttackSpeedValue;
+         private DarkComboBox cmbAttackSpeedModifier;
+         private System.Windows.Forms.Label lblAttackSpeedModifier;
++        private DarkGroupBox grpHair;
++        private DarkButton btnRemoveHair;
++        private DarkButton BtnAddHair;
++        private DarkGroupBox grpGender2;
++        private DarkRadioButton rbMale2;
++        private DarkRadioButton rbFemale2;
++        private System.Windows.Forms.ListBox lstHair;
++        private System.Windows.Forms.Label lblHair;
++        private System.Windows.Forms.PictureBox picHair;
++        private DarkComboBox cmbHair;
+     }
+ }
+\ No newline at end of file
+diff --git a/Intersect.Editor/Forms/Editors/frmClass.cs b/Intersect.Editor/Forms/Editors/frmClass.cs
+index c2328faa..04ba273b 100644
+--- a/Intersect.Editor/Forms/Editors/frmClass.cs
++++ b/Intersect.Editor/Forms/Editors/frmClass.cs
+@@ -211,6 +211,7 @@ private void UpdateEditor()
+                 }
+ 
+                 RefreshSpriteList(false);
++                RefreshHairList(false);
+ 
+                 // Don't select if there are no Spells, to avoid crashes.
+                 if (lstSprites.Items.Count > 0)
+@@ -252,6 +253,16 @@ private void UpdateEditor()
+                     cmbWarpMap.SelectedIndex = mapIndex;
+                 }
+ 
++                if (mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].Count > 0)
++                                     {
++                    lstHair.SelectedIndex = 0;
++                                     } else
++                                     {
++                     lstHair.SelectedIndex = -1;
++                     cmbHair.SelectedIndex = 0;
++                     rbMale2.Checked = true;
++                                     }
++
+                 nudX.Value = mEditorItem.SpawnX;
+                 nudY.Value = mEditorItem.SpawnY;
+                 cmbDirection.SelectedIndex = mEditorItem.SpawnDir;
+@@ -284,7 +295,14 @@ private void frmClass_Load(object sender, EventArgs e)
+ 
+             cmbFace.Items.Clear();
+             cmbFace.Items.Add(Strings.General.none);
+-            cmbFace.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(GameContentManager.TextureType.Face));
++            cmbFace.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(GameContentManager.TextureType.Face)
++              );
++            
++             cmbHair.Items.Clear();
++             cmbHair.Items.Add(Strings.General.none);
++             cmbHair.Items.AddRange(
++             GameContentManager.GetSmartSortedTextureNames(GameContentManager.TextureType.Hairs)
++                        );
+             cmbSpawnItem.Items.Clear();
+             cmbSpawnItem.Items.Add(Strings.General.none);
+             cmbSpawnItem.Items.AddRange(ItemBase.Names);
+@@ -462,6 +480,12 @@ private void InitLocalization()
+             expGrid.Columns.Add(tnlCol);
+             expGrid.Columns.Add(totalCol);
+ 
++            grpHair.Text = Strings.ClassEditor.hairstyles;
++            grpGender2.Text = Strings.ClassEditor.gender;
++            rbMale2.Text = Strings.ClassEditor.male;
++            rbFemale2.Text = Strings.ClassEditor.female;
++            lblHair.Text = Strings.ClassEditor.hair;
++
+             //Searching/Sorting
+             btnChronological.ToolTipText = Strings.ClassEditor.sortchronologically;
+             txtSearch.Text = Strings.ClassEditor.searchplaceholder;
+@@ -661,6 +685,44 @@ private void RefreshSpriteList(bool saveSpot = true)
+             }
+         }
+ 
++        private void RefreshHairList(bool saveSpot = true)
++        {
++                        // Refresh List
++             var n = lstHair.SelectedIndex;
++             lstHair.Items.Clear();
++                         for (var i = 0; i < mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].Count; i++)
++            {
++                             if (mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][i].Gender == 0)
++                {
++                     lstHair.Items.Add(
++                     Strings.ClassEditor.spriteitemmale.ToString(
++                     i + 1, TextUtils.NullToNone(mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][i].Texture)
++                                             )
++                                         );
++                                     }
++                else
++                {
++                     lstHair.Items.Add(
++                     Strings.ClassEditor.spriteitemfemale.ToString(
++                     i + 1, TextUtils.NullToNone(mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][i].Texture)
++                                             )
++                                         );
++                                     }
++                             }
++            
++                         if (saveSpot)
++            {
++                 lstHair.SelectedIndex = n;
++                             }
++            else if (lstHair.Items.Count > 0)
++                             {
++                 lstHair.SelectedIndex = 0;
++                            }
++            
++             lstHair_Click(null, null);
++                     }
++
++
+         private void btnAdd_Click(object sender, EventArgs e)
+         {
+             var n = new ClassSprite
+@@ -754,6 +816,30 @@ private void DrawSprite()
+             picFace.BackgroundImage = picFaceBmp;
+         }
+ 
++        private void DrawHair()
++        {
++             var picSpriteBmp = new Bitmap(picHair.Width, picHair.Height);
++             var gfx = Graphics.FromImage(picSpriteBmp);
++             gfx.FillRectangle(Brushes.Black, new Rectangle(0, 0, picSprite.Width, picSprite.Height));
++                         if (cmbHair.SelectedIndex > 0)
++            {
++                        if (File.Exists("resources/hairs/" + cmbHair.Text))
++                {
++                var img = Image.FromFile("resources/hairs/" + cmbHair.Text);
++                 gfx.DrawImage(
++                    img, new Rectangle(0, 0, img.Width / 8, img.Height / 8),
++                    new Rectangle(0, 0, img.Width / 8, img.Height / 8), GraphicsUnit.Pixel
++                                         );
++                    
++                    img.Dispose();
++                                     }
++                            }
++            
++            gfx.Dispose();
++            picHair.BackgroundImage = picSpriteBmp;
++                     }
++
++
+         private void btnVisualMapSelector_Click(object sender, EventArgs e)
+         {
+             var frmWarpSelection = new FrmWarpSelection();
+@@ -1290,6 +1376,107 @@ private void nudAttackSpeedValue_ValueChanged(object sender, EventArgs e)
+             mEditorItem.AttackSpeedValue = (int) nudAttackSpeedValue.Value;
+         }
+ 
++        private void cmbHair_SelectedIndexChanged(object sender, EventArgs e)
++        {
++                         if (lstHair.SelectedIndex >= 0)
++            {
++                 mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][lstHair.SelectedIndex].Texture = TextUtils.SanitizeNone(cmbHair?.Text);
++                 RefreshHairList();
++                             }
++            
++             DrawHair();
++                     }
++
++         private void BtnAddHair_Click(object sender, EventArgs e)
++        {
++             var n = new CustomSpriteLayer
++            {
++                 Texture = null,
++                 Gender = 0
++             };
++            
++             mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].Add(n);
++            
++                         if (n.Gender == 0)
++            {
++                 lstHair.Items.Add(
++                 Strings.ClassEditor.spriteitemmale.ToString(
++                 mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].Count, TextUtils.NullToNone(n.Texture)
++                                     )
++                                 );
++                             }
++            else            {
++                lstHair.Items.Add(
++                Strings.ClassEditor.spriteitemfemale.ToString(
++                mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].Count, TextUtils.NullToNone(n.Texture)
++                                     )
++                                 );
++                             }
++            
++             lstHair.SelectedIndex = lstHair.Items.Count - 1;
++             lstHair_Click(null, null);
++                     }
++
++         private void btnRemoveHair_Click(object sender, EventArgs e)
++        {
++               if (lstHair.SelectedIndex == -1)
++            {
++                 return;
++              }
++            
++             mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair].RemoveAt(lstHair.SelectedIndex);
++             lstHair.Items.RemoveAt(lstHair.SelectedIndex);
++            
++             RefreshHairList(false);
++            
++                         if (lstHair.Items.Count > 0)
++            {
++             lstHair.SelectedIndex = 0;
++                        }
++                   }
++
++         private void lstHair_Click(object sender, EventArgs e)
++       {
++             if (lstHair.Items.Count > 0)
++            {
++               cmbHair.SelectedIndex = cmbHair.FindString(
++                TextUtils.NullToNone(mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][lstHair.SelectedIndex].Texture)
++                      );
++               
++                 if (mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][lstHair.SelectedIndex].Gender == 0)
++                {
++               rbMale2.Checked = true;
++                       }
++                else
++                {
++               rbFemale2.Checked = true;
++                       }
++                         }
++                  }
++
++         private void rbMale2_Click(object sender, EventArgs e)
++       {
++              if (lstHair.SelectedIndex == -1) return;
++         
++                     if (lstHair.Items.Count > 0)
++            {
++          mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][lstHair.SelectedIndex].Gender = Gender.Male;
++          RefreshHairList();
++                  }
++               }
++         private void rbFemale2_Click(object sender, EventArgs e)
++        {
++                        if (lstHair.SelectedIndex == -1) return;
++            
++                        if (lstHair.Items.Count > 0)
++            {
++            mEditorItem.CustomSpriteLayers[CustomSpriteLayers.Hair][lstHair.SelectedIndex].Gender = Gender.Female;
++             RefreshHairList();
++                         }
++                   }
++
++
++
+         #region "Exp Grid"
+ 
+         private void btnExpGrid_Click(object sender, EventArgs e)
+@@ -1690,6 +1877,10 @@ private void txtSearch_Click(object sender, EventArgs e)
+ 
+         #endregion
+ 
++        private void BtnAddHair_Click_1(object sender, EventArgs e)
++        {
++
++        }
+     }
+ 
+ }
+diff --git a/Intersect.Editor/Forms/Editors/frmClass.resx b/Intersect.Editor/Forms/Editors/frmClass.resx
+index 9fe7ae2f..a6e4877e 100644
+--- a/Intersect.Editor/Forms/Editors/frmClass.resx
++++ b/Intersect.Editor/Forms/Editors/frmClass.resx
+@@ -117,6 +117,10 @@
+   <resheader name="writer">
+     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+   </resheader>
++  <metadata name="imageList.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
++    <value>793, 17</value>
++  </metadata>
++ 
+   <metadata name="toolStrip.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+     <value>17, 17</value>
+   </metadata>
+diff --git a/Intersect.Editor/Localization/Strings.cs b/Intersect.Editor/Localization/Strings.cs
+index 459ecc76..dce7f840 100644
+--- a/Intersect.Editor/Localization/Strings.cs
++++ b/Intersect.Editor/Localization/Strings.cs
+@@ -927,6 +927,10 @@ public struct ClassEditor
+ 
+             public static LocalizedString undotitle = @"Undo Changes";
+ 
++            public static LocalizedString hairstyles = @"Hairstyles";
++
++            public static LocalizedString hair = @"Hair:";
++
+         }
+ 
+         public struct Colors
+@@ -1239,7 +1243,8 @@ public struct EventChangeFace
+ 
+         }
+ 
+-        public struct EventShowPicture
++
++    public struct EventShowPicture
+         {
+ 
+             public static LocalizedString cancel = @"Cancel";
+diff --git a/Intersect.Server/Entities/Player.cs b/Intersect.Server/Entities/Player.cs
+index fa6693d3..61dcf7a8 100644
+--- a/Intersect.Server/Entities/Player.cs
++++ b/Intersect.Server/Entities/Player.cs
+@@ -78,7 +78,16 @@ public partial class Player : Entity
+ 
+         public Gender Gender { get; set; }
+ 
+-        public long Exp { get; set; }
++        [NotMapped]
++         public string[] CustomSpriteLayers { get; set; } = new string[(int)Enums.CustomSpriteLayers.CustomCount];
++        [Column("CustomSpriteLayers"), JsonIgnore]
++        public string CustomSpriteLayersJson
++         {
++             get => DatabaseUtils.SaveStringArray(CustomSpriteLayers, (int) Enums.CustomSpriteLayers.CustomCount);
++             set => CustomSpriteLayers = DatabaseUtils.LoadStringArray(value, (int) Enums.CustomSpriteLayers.CustomCount);
++         }
++
++    public long Exp { get; set; }
+ 
+         public int StatPoints { get; set; }
+ 
+@@ -708,6 +717,9 @@ public override EntityPacket EntityPacket(EntityPacket packet = null, Player for
+             {
+                 ((PlayerEntityPacket) packet).Equipment =
+                     PacketSender.GenerateEquipmentPacket(forPlayer, (Player) this);
++
++                pkt.CustomSpriteLayers =
++                    PacketSender.GenerateCustomSpriteLayersPacket((Player)this);
+             }
+ 
+             return pkt;
+diff --git a/Intersect.Server/Intersect.Server.csproj b/Intersect.Server/Intersect.Server.csproj
+index 0d7f55d9..d5219a26 100644
+--- a/Intersect.Server/Intersect.Server.csproj
++++ b/Intersect.Server/Intersect.Server.csproj
+@@ -519,6 +519,7 @@
+     <Compile Include="Entities\Pathfinding\SpatialAStar.cs" />
+     <Compile Include="Entities\Pathfinding\PathfinderTarget.cs" />
+     <Compile Include="Entities\Pathfinding\PriorityQueue.cs" />
++
+     <Compile Include="Migrations\20210414121435_TrackUserPlayerStats.cs" />
+     <Compile Include="Migrations\20210414121435_TrackUserPlayerStats.designer.cs">
+       <DependentUpon>20210414121435_TrackUserPlayerStats.cs</DependentUpon>
+@@ -530,6 +531,17 @@
+     <Compile Include="Metrics\Controllers\ThreadingMetricsController.cs" />
+     <Compile Include="Metrics\Histogram.cs" />
+     <Compile Include="Metrics\MetricsRoot.cs" />
++
++    <Compile Include="Migrations\20200402173703_PlayerHair_PlayerEdits.cs" />
++     <Compile Include="Migrations\20200402173703_PlayerHair_PlayerEdits.designer.cs">
++       <DependentUpon>20200402173703_PlayerHair_PlayerEdits.cs</DependentUpon>
++     </Compile>
++     <Compile Include="Migrations\Game\20200402142818_PlayerHair_ClassEdits.cs" />
++     <Compile Include="Migrations\Game\20200402142818_PlayerHair_ClassEdits.designer.cs">
++       <DependentUpon>20200402142818_PlayerHair_ClassEdits.cs</DependentUpon>
++     </Compile>
++    <Compile Include="Migrations\Game\20200402142818_PlayerHair_ClassEdits.cs" />
++
+     <Compile Include="Migrations\Game\20201222164741_NpcResetRadius.cs" />
+     <Compile Include="Migrations\Game\20201222164741_NpcResetRadius.designer.cs">
+       <DependentUpon>20201222164741_NpcResetRadius.cs</DependentUpon>
+diff --git a/Intersect.Server/Migrations/20190310013418_StandardizeVocabulary1.Designer.cs b/Intersect.Server/Migrations/20190310013418_StandardizeVocabulary1.Designer.cs
+index 6689286b..324a5369 100644
+--- a/Intersect.Server/Migrations/20190310013418_StandardizeVocabulary1.Designer.cs
++++ b/Intersect.Server/Migrations/20190310013418_StandardizeVocabulary1.Designer.cs
+@@ -349,6 +349,8 @@ protected override void BuildTargetModel(ModelBuilder modelBuilder)
+ 
+                     b.Property<Guid>("ClassId");
+ 
++                 
++
+                     b.Property<int>("Dir");
+ 
+                     b.Property<string>("EquipmentJson")
+diff --git a/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.Designer.cs b/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.Designer.cs
+new file mode 100644
+index 00000000..fe375a49
+--- /dev/null
++++ b/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.Designer.cs
+@@ -0,0 +1,514 @@
++﻿// <auto-generated />
++using System;
++using Intersect.Server.Database.PlayerData;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++
++namespace Intersect.Server.Migrations
++{
++    [DbContext(typeof(PlayerContext))]
++    [Migration("20200402173703_PlayerHair_PlayerEdits")]
++    partial class PlayerHair_PlayerEdits
++    {
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "2.1.3-rtm-32065");
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Api.RefreshToken", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("ClientId");
++
++                b.Property<DateTime>("Expires");
++
++                b.Property<DateTime>("Issued");
++
++                b.Property<string>("Subject")
++                    .IsRequired();
++
++                b.Property<string>("Ticket")
++                    .IsRequired();
++
++                b.Property<Guid>("TicketId");
++
++                b.Property<Guid>("UserId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("UserId");
++
++                b.ToTable("RefreshTokens");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Ban", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Banner");
++
++                b.Property<DateTime>("EndTime");
++
++                b.Property<string>("Ip");
++
++                b.Property<string>("Reason");
++
++                b.Property<DateTime>("StartTime");
++
++                b.Property<Guid>("UserId")
++                    .HasColumnName("PlayerId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("UserId")
++                    .IsUnique();
++
++                b.ToTable("Bans");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Mute", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<DateTime>("EndTime");
++
++                b.Property<string>("Ip");
++
++                b.Property<string>("Muter");
++
++                b.Property<string>("Reason");
++
++                b.Property<DateTime>("StartTime");
++
++                b.Property<Guid>("UserId")
++                    .HasColumnName("PlayerId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("UserId")
++                    .IsUnique();
++
++                b.ToTable("Mutes");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Bag", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<int>("SlotCount");
++
++                b.HasKey("Id");
++
++                b.ToTable("Bags");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.BagSlot", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid?>("BagId");
++
++                b.Property<Guid>("ItemId");
++
++                b.Property<Guid>("ParentBagId");
++
++                b.Property<int>("Quantity");
++
++                b.Property<int>("Slot");
++
++                b.Property<string>("StatBuffsJson")
++                    .HasColumnName("StatBuffs");
++
++                b.HasKey("Id");
++
++                b.HasIndex("BagId");
++
++                b.HasIndex("ParentBagId");
++
++                b.ToTable("Bag_Items");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.BankSlot", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid?>("BagId");
++
++                b.Property<Guid>("ItemId");
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<int>("Quantity");
++
++                b.Property<int>("Slot");
++
++                b.Property<string>("StatBuffsJson")
++                    .HasColumnName("StatBuffs");
++
++                b.HasKey("Id");
++
++                b.HasIndex("BagId");
++
++                b.HasIndex("PlayerId");
++
++                b.ToTable("Player_Bank");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Friend", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid?>("OwnerId");
++
++                b.Property<Guid?>("TargetId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("OwnerId");
++
++                b.HasIndex("TargetId");
++
++                b.ToTable("Player_Friends");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.HotbarSlot", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("BagId");
++
++                b.Property<Guid>("ItemOrSpellId");
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<int>("Slot");
++
++                b.Property<string>("StatBuffsJson")
++                    .HasColumnName("PreferredStatBuffs");
++
++                b.HasKey("Id");
++
++                b.HasIndex("PlayerId");
++
++                b.ToTable("Player_Hotbar");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.InventorySlot", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid?>("BagId");
++
++                b.Property<Guid>("ItemId");
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<int>("Quantity");
++
++                b.Property<int>("Slot");
++
++                b.Property<string>("StatBuffsJson")
++                    .HasColumnName("StatBuffs");
++
++                b.HasKey("Id");
++
++                b.HasIndex("BagId");
++
++                b.HasIndex("PlayerId");
++
++                b.ToTable("Player_Items");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Quest", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("Completed");
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<Guid>("QuestId");
++
++                b.Property<Guid>("TaskId");
++
++                b.Property<int>("TaskProgress");
++
++                b.HasKey("Id");
++
++                b.HasIndex("PlayerId");
++
++                b.HasIndex("QuestId", "PlayerId")
++                    .IsUnique();
++
++                b.ToTable("Player_Quests");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.SpellSlot", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<int>("Slot");
++
++                b.Property<long>("SpellCd");
++
++                b.Property<Guid>("SpellId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("PlayerId");
++
++                b.ToTable("Player_Spells");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Variable", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Json")
++                    .HasColumnName("Value");
++
++                b.Property<Guid>("PlayerId");
++
++                b.Property<Guid>("VariableId");
++
++                b.HasKey("Id");
++
++                b.HasIndex("PlayerId");
++
++                b.HasIndex("VariableId", "PlayerId")
++                    .IsUnique();
++
++                b.ToTable("Player_Variables");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.User", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Email");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("Password");
++
++                b.Property<string>("PasswordResetCode");
++
++                b.Property<DateTime?>("PasswordResetTime");
++
++                b.Property<string>("PowerJson")
++                    .HasColumnName("Power");
++
++                b.Property<string>("Salt");
++
++                b.HasKey("Id");
++
++                b.ToTable("Users");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Entities.Player", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("ClassId");
++
++                b.Property<string>("CustomSpriteLayersJson")
++                    .HasColumnName("CustomSpriteLayers");
++
++                b.Property<int>("Dir");
++
++                b.Property<string>("EquipmentJson")
++                    .HasColumnName("Equipment");
++
++                b.Property<long>("Exp");
++
++                b.Property<string>("Face");
++
++                b.Property<string>("FooterLabelJson")
++                    .HasColumnName("FooterLabel");
++
++                b.Property<int>("Gender");
++
++                b.Property<string>("HeaderLabelJson")
++                    .HasColumnName("HeaderLabel");
++
++                b.Property<string>("ItemCooldownsJson")
++                    .HasColumnName("ItemCooldowns");
++
++                b.Property<DateTime?>("LastOnline");
++
++                b.Property<int>("Level");
++
++                b.Property<Guid>("MapId");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("NameColorJson")
++                    .HasColumnName("NameColor");
++
++                b.Property<string>("SpellCooldownsJson")
++                    .HasColumnName("SpellCooldowns");
++
++                b.Property<string>("Sprite");
++
++                b.Property<int>("StatPoints");
++
++                b.Property<string>("StatPointsJson")
++                    .HasColumnName("StatPointAllocations");
++
++                b.Property<string>("StatsJson")
++                    .HasColumnName("BaseStats");
++
++                b.Property<Guid>("UserId");
++
++                b.Property<string>("VitalsJson")
++                    .HasColumnName("Vitals");
++
++                b.Property<int>("X");
++
++                b.Property<int>("Y");
++
++                b.Property<int>("Z");
++
++                b.HasKey("Id");
++
++                b.HasIndex("UserId");
++
++                b.ToTable("Players");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Api.RefreshToken", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.User", "User")
++                    .WithMany("RefreshTokens")
++                    .HasForeignKey("UserId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Ban", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.User", "User")
++                    .WithOne("Ban")
++                    .HasForeignKey("Intersect.Server.Database.PlayerData.Ban", "UserId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Mute", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.User", "User")
++                    .WithOne("Mute")
++                    .HasForeignKey("Intersect.Server.Database.PlayerData.Mute", "UserId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.BagSlot", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.Players.Bag", "Bag")
++                    .WithMany()
++                    .HasForeignKey("BagId");
++
++                b.HasOne("Intersect.Server.Database.PlayerData.Players.Bag", "ParentBag")
++                    .WithMany("Slots")
++                    .HasForeignKey("ParentBagId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.BankSlot", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.Players.Bag", "Bag")
++                    .WithMany()
++                    .HasForeignKey("BagId");
++
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Bank")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Friend", b =>
++            {
++                b.HasOne("Intersect.Server.Entities.Player", "Owner")
++                    .WithMany("Friends")
++                    .HasForeignKey("OwnerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++
++                b.HasOne("Intersect.Server.Entities.Player", "Target")
++                    .WithMany()
++                    .HasForeignKey("TargetId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.HotbarSlot", b =>
++            {
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Hotbar")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.InventorySlot", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.Players.Bag", "Bag")
++                    .WithMany()
++                    .HasForeignKey("BagId");
++
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Items")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Quest", b =>
++            {
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Quests")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.SpellSlot", b =>
++            {
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Spells")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Database.PlayerData.Players.Variable", b =>
++            {
++                b.HasOne("Intersect.Server.Entities.Player", "Player")
++                    .WithMany("Variables")
++                    .HasForeignKey("PlayerId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++
++            modelBuilder.Entity("Intersect.Server.Entities.Player", b =>
++            {
++                b.HasOne("Intersect.Server.Database.PlayerData.User", "User")
++                    .WithMany("Players")
++                    .HasForeignKey("UserId")
++                    .OnDelete(DeleteBehavior.Cascade);
++            });
++#pragma warning restore 612, 618
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.cs b/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.cs
+new file mode 100644
+index 00000000..e9d85cfb
+--- /dev/null
++++ b/Intersect.Server/Migrations/20200402173703_PlayerHair_PlayerEdits.cs
+@@ -0,0 +1,21 @@
++﻿using Microsoft.EntityFrameworkCore.Migrations;
++namespace Intersect.Server.Migrations
++{
++public partial class PlayerHair_PlayerEdits : Migration
++    {
++       protected override void Up(MigrationBuilder migrationBuilder)
++        {
++             migrationBuilder.AddColumn<string>(
++                 name: "CustomSpriteLayers",
++                 table: "Players",
++                 nullable: true);
++         }
++
++         protected override void Down(MigrationBuilder migrationBuilder)
++         {
++             migrationBuilder.DropColumn(
++                 name: "CustomSpriteLayers",
++                 table: "Players");
++         }
++     }
++ }
+\ No newline at end of file
+diff --git a/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.Designer.cs b/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.Designer.cs
+new file mode 100644
+index 00000000..841af666
+--- /dev/null
++++ b/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.Designer.cs
+@@ -0,0 +1,1039 @@
++﻿// <auto-generated />
++using System;
++using Intersect.Server.Database.GameData;
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Infrastructure;
++using Microsoft.EntityFrameworkCore.Migrations;
++using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
++
++namespace Intersect.Server.Migrations.Game
++{
++    [DbContext(typeof(GameContext))]
++    [Migration("20200402142818_PlayerHair_ClassEdits")]
++    partial class PlayerHair_ClassEdits
++    {
++        protected override void BuildTargetModel(ModelBuilder modelBuilder)
++        {
++#pragma warning disable 612, 618
++            modelBuilder
++                .HasAnnotation("ProductVersion", "2.1.3-rtm-32065");
++
++            modelBuilder.Entity("Intersect.GameObjects.AnimationBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("CompleteSound");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("Sound");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Animations");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ClassBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("AttackAnimationId")
++                    .HasColumnName("AttackAnimation");
++
++                b.Property<int>("AttackSpeedModifier");
++
++                b.Property<int>("AttackSpeedValue");
++
++                b.Property<long>("BaseExp");
++
++                b.Property<int>("BasePoints");
++
++                b.Property<int>("CritChance");
++
++                b.Property<double>("CritMultiplier");
++
++                b.Property<int>("Damage");
++
++                b.Property<int>("DamageType");
++
++                b.Property<long>("ExpIncrease");
++
++                b.Property<string>("ExpOverridesJson")
++                    .HasColumnName("ExperienceOverrides");
++
++                b.Property<string>("Folder");
++
++                b.Property<bool>("IncreasePercentage");
++
++                b.Property<string>("JsonBaseStats")
++                    .HasColumnName("BaseStats");
++
++                b.Property<string>("JsonBaseVitals")
++                    .HasColumnName("BaseVitals");
++
++                b.Property<string>("JsonHairs")
++                    .HasColumnName("Hairs");
++
++                b.Property<string>("JsonItems")
++                    .HasColumnName("Items");
++
++                b.Property<string>("JsonSpells")
++                    .HasColumnName("Spells");
++
++                b.Property<string>("JsonSprites")
++                    .HasColumnName("Sprites");
++
++                b.Property<bool>("Locked");
++
++                b.Property<string>("Name");
++
++                b.Property<int>("PointIncrease");
++
++                b.Property<string>("RegenJson")
++                    .HasColumnName("VitalRegen");
++
++                b.Property<int>("Scaling");
++
++                b.Property<int>("ScalingStat");
++
++                b.Property<int>("SpawnDir");
++
++                b.Property<Guid>("SpawnMapId")
++                    .HasColumnName("SpawnMap");
++
++                b.Property<int>("SpawnX");
++
++                b.Property<int>("SpawnY");
++
++                b.Property<string>("StatIncreaseJson")
++                    .HasColumnName("StatIncreases");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<string>("VitalIncreaseJson")
++                    .HasColumnName("VitalIncreases");
++
++                b.HasKey("Id");
++
++                b.ToTable("Classes");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.Crafting.CraftBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("IngredientsJson")
++                    .HasColumnName("Ingredients");
++
++                b.Property<Guid>("ItemId");
++
++                b.Property<string>("Name");
++
++                b.Property<int>("Quantity");
++
++                b.Property<int>("Time");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Crafts");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.CraftingTableBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("CraftsJson")
++                    .HasColumnName("Crafts");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("Name");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("CraftingTables");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.Events.EventBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("CommonEvent");
++
++                b.Property<string>("Folder");
++
++                b.Property<bool>("Global");
++
++                b.Property<Guid>("MapId");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("PagesJson")
++                    .HasColumnName("Pages");
++
++                b.Property<int>("SpawnX");
++
++                b.Property<int>("SpawnY");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Events");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ItemBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("AnimationId")
++                    .HasColumnName("Animation");
++
++                b.Property<Guid>("AttackAnimationId")
++                    .HasColumnName("AttackAnimation");
++
++                b.Property<int>("AttackSpeedModifier");
++
++                b.Property<int>("AttackSpeedValue");
++
++                b.Property<bool>("Bound");
++
++                b.Property<int>("Cooldown");
++
++                b.Property<int>("CritChance");
++
++                b.Property<double>("CritMultiplier");
++
++                b.Property<int>("Damage");
++
++                b.Property<int>("DamageType");
++
++                b.Property<string>("Description");
++
++                b.Property<bool>("DestroySpell");
++
++                b.Property<Guid>("EquipmentAnimationId")
++                    .HasColumnName("EquipmentAnimation");
++
++                b.Property<int>("EquipmentSlot");
++
++                b.Property<Guid>("EventId")
++                    .HasColumnName("Event");
++
++                b.Property<string>("FemalePaperdoll");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("Icon");
++
++                b.Property<int>("ItemType");
++
++                b.Property<string>("JsonUsageRequirements")
++                    .HasColumnName("UsageRequirements");
++
++                b.Property<string>("MalePaperdoll");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("PercentageStatsJson")
++                    .HasColumnName("PercentageStatsGiven");
++
++                b.Property<string>("PercentageVitalsJson")
++                    .HasColumnName("PercentageVitalsGiven");
++
++                b.Property<int>("Price");
++
++                b.Property<Guid>("ProjectileId")
++                    .HasColumnName("Projectile");
++
++                b.Property<bool>("QuickCast");
++
++                b.Property<int>("Rarity");
++
++                b.Property<int>("Scaling");
++
++                b.Property<int>("ScalingStat");
++
++                b.Property<int>("SlotCount");
++
++                b.Property<int>("Speed");
++
++                b.Property<Guid>("SpellId")
++                    .HasColumnName("Spell");
++
++                b.Property<bool>("Stackable");
++
++                b.Property<int>("StatGrowth");
++
++                b.Property<string>("StatsJson")
++                    .HasColumnName("StatsGiven");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<int>("Tool");
++
++                b.Property<bool>("TwoHanded");
++
++                b.Property<string>("VitalsJson")
++                    .HasColumnName("VitalsGiven");
++
++                b.Property<string>("VitalsRegenJson")
++                    .HasColumnName("VitalsRegen");
++
++                b.HasKey("Id");
++
++                b.ToTable("Items");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.Maps.MapList.MapList", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("JsonData")
++                    .HasColumnName("JsonData");
++
++                b.HasKey("Id");
++
++                b.ToTable("MapFolders");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.NpcBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("Aggressive");
++
++                b.Property<bool>("AttackAllies");
++
++                b.Property<Guid>("AttackAnimationId")
++                    .HasColumnName("AttackAnimation");
++
++                b.Property<string>("AttackOnSightConditionsJson")
++                    .HasColumnName("AttackOnSightConditions");
++
++                b.Property<int>("AttackSpeedModifier");
++
++                b.Property<int>("AttackSpeedValue");
++
++                b.Property<string>("CraftsJson")
++                    .HasColumnName("Spells");
++
++                b.Property<int>("CritChance");
++
++                b.Property<double>("CritMultiplier");
++
++                b.Property<int>("Damage");
++
++                b.Property<int>("DamageType");
++
++                b.Property<long>("Experience");
++
++                b.Property<byte>("FleeHealthPercentage");
++
++                b.Property<bool>("FocusHighestDamageDealer");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("JsonAggroList")
++                    .HasColumnName("AggroList");
++
++                b.Property<string>("JsonDrops")
++                    .HasColumnName("Drops");
++
++                b.Property<string>("JsonMaxVital")
++                    .HasColumnName("MaxVital");
++
++                b.Property<string>("JsonStat")
++                    .HasColumnName("Stats");
++
++                b.Property<int>("Level");
++
++                b.Property<byte>("Movement");
++
++                b.Property<string>("Name");
++
++                b.Property<bool>("NpcVsNpcEnabled");
++
++                b.Property<Guid>("OnDeathEventId")
++                    .HasColumnName("OnDeathEvent");
++
++                b.Property<Guid>("OnDeathPartyEventId")
++                    .HasColumnName("OnDeathPartyEvent");
++
++                b.Property<string>("PlayerCanAttackConditionsJson")
++                    .HasColumnName("PlayerCanAttackConditions");
++
++                b.Property<string>("PlayerFriendConditionsJson")
++                    .HasColumnName("PlayerFriendConditions");
++
++                b.Property<string>("RegenJson")
++                    .HasColumnName("VitalRegen");
++
++                b.Property<int>("Scaling");
++
++                b.Property<int>("ScalingStat");
++
++                b.Property<int>("SightRange");
++
++                b.Property<int>("SpawnDuration");
++
++                b.Property<int>("SpellFrequency");
++
++                b.Property<string>("Sprite");
++
++                b.Property<bool>("Swarm");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Npcs");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.PlayerVariableBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("TextId");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<byte>("Type");
++
++                b.HasKey("Id");
++
++                b.ToTable("PlayerVariables");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ProjectileBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("AmmoItemId")
++                    .HasColumnName("Ammo");
++
++                b.Property<int>("AmmoRequired");
++
++                b.Property<string>("AnimationsJson")
++                    .HasColumnName("Animations");
++
++                b.Property<int>("Delay");
++
++                b.Property<string>("Folder");
++
++                b.Property<bool>("GrappleHook");
++
++                b.Property<bool>("IgnoreActiveResources");
++
++                b.Property<bool>("IgnoreExhaustedResources");
++
++                b.Property<bool>("IgnoreMapBlocks");
++
++                b.Property<bool>("IgnoreZDimension");
++
++                b.Property<int>("Knockback");
++
++                b.Property<string>("Name");
++
++                b.Property<bool>("PierceTarget");
++
++                b.Property<int>("Quantity");
++
++                b.Property<int>("Range");
++
++                b.Property<string>("SpawnsJson")
++                    .HasColumnName("SpawnLocations");
++
++                b.Property<int>("Speed");
++
++                b.Property<Guid>("SpellId")
++                    .HasColumnName("Spell");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Projectiles");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.QuestBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("BeforeDescription");
++
++                b.Property<string>("EndDescription");
++
++                b.Property<Guid>("EndEventId")
++                    .HasColumnName("EndEvent");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("InProgressDescription");
++
++                b.Property<string>("JsonRequirements")
++                    .HasColumnName("Requirements");
++
++                b.Property<bool>("LogAfterComplete");
++
++                b.Property<bool>("LogBeforeOffer");
++
++                b.Property<string>("Name");
++
++                b.Property<bool>("Quitable");
++
++                b.Property<bool>("Repeatable");
++
++                b.Property<string>("StartDescription");
++
++                b.Property<Guid>("StartEventId")
++                    .HasColumnName("StartEvent");
++
++                b.Property<string>("TasksJson")
++                    .HasColumnName("Tasks");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Quests");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ResourceBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<Guid>("AnimationId")
++                    .HasColumnName("Animation");
++
++                b.Property<Guid>("EventId")
++                    .HasColumnName("Event");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("JsonDrops")
++                    .HasColumnName("Drops");
++
++                b.Property<string>("JsonHarvestingRequirements")
++                    .HasColumnName("HarvestingRequirements");
++
++                b.Property<int>("MaxHp");
++
++                b.Property<int>("MinHp");
++
++                b.Property<string>("Name");
++
++                b.Property<int>("SpawnDuration");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<int>("Tool");
++
++                b.Property<int>("VitalRegen");
++
++                b.Property<bool>("WalkableAfter");
++
++                b.Property<bool>("WalkableBefore");
++
++                b.HasKey("Id");
++
++                b.ToTable("Resources");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ServerVariableBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("Json")
++                    .HasColumnName("Value");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("TextId");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<byte>("Type");
++
++                b.HasKey("Id");
++
++                b.ToTable("ServerVariables");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ShopBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("BuyingWhitelist");
++
++                b.Property<Guid>("DefaultCurrencyId")
++                    .HasColumnName("DefaultCurrency");
++
++                b.Property<string>("Folder");
++
++                b.Property<string>("JsonBuyingItems")
++                    .HasColumnName("BuyingItems");
++
++                b.Property<string>("JsonSellingItems")
++                    .HasColumnName("SellingItems");
++
++                b.Property<string>("Name");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Shops");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.SpellBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<bool>("Bound");
++
++                b.Property<Guid>("CastAnimationId")
++                    .HasColumnName("CastAnimation");
++
++                b.Property<int>("CastDuration");
++
++                b.Property<int>("CooldownDuration");
++
++                b.Property<string>("Description");
++
++                b.Property<Guid>("EventId")
++                    .HasColumnName("Event");
++
++                b.Property<string>("Folder");
++
++                b.Property<Guid>("HitAnimationId")
++                    .HasColumnName("HitAnimation");
++
++                b.Property<string>("Icon");
++
++                b.Property<string>("JsonCastRequirements")
++                    .HasColumnName("CastRequirements");
++
++                b.Property<string>("Name");
++
++                b.Property<int>("SpellType");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<string>("VitalCostJson")
++                    .HasColumnName("VitalCost");
++
++                b.HasKey("Id");
++
++                b.ToTable("Spells");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.TilesetBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("Name");
++
++                b.Property<long>("TimeCreated");
++
++                b.HasKey("Id");
++
++                b.ToTable("Tilesets");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.TimeBase", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<string>("DaylightHuesJson")
++                    .HasColumnName("DaylightHues");
++
++                b.Property<int>("RangeInterval");
++
++                b.Property<float>("Rate");
++
++                b.Property<bool>("SyncTime");
++
++                b.HasKey("Id");
++
++                b.ToTable("Time");
++            });
++
++            modelBuilder.Entity("Intersect.Server.Maps.MapInstance", b =>
++            {
++                b.Property<Guid>("Id")
++                    .ValueGeneratedOnAdd();
++
++                b.Property<int>("AHue");
++
++                b.Property<byte[]>("AttributeData")
++                    .HasColumnName("Attributes");
++
++                b.Property<int>("BHue");
++
++                b.Property<int>("Brightness");
++
++                b.Property<Guid>("Down");
++
++                b.Property<string>("EventIdsJson")
++                    .HasColumnName("Events");
++
++                b.Property<string>("Fog");
++
++                b.Property<int>("FogTransparency");
++
++                b.Property<int>("FogXSpeed");
++
++                b.Property<int>("FogYSpeed");
++
++                b.Property<int>("GHue");
++
++                b.Property<bool>("IsIndoors");
++
++                b.Property<Guid>("Left");
++
++                b.Property<string>("LightsJson")
++                    .HasColumnName("Lights");
++
++                b.Property<string>("Music");
++
++                b.Property<string>("Name");
++
++                b.Property<string>("NpcSpawnsJson")
++                    .HasColumnName("NpcSpawns");
++
++                b.Property<string>("OverlayGraphic");
++
++                b.Property<string>("Panorama");
++
++                b.Property<string>("PlayerLightColorJson")
++                    .HasColumnName("PlayerLightColor");
++
++                b.Property<float>("PlayerLightExpand");
++
++                b.Property<byte>("PlayerLightIntensity");
++
++                b.Property<int>("PlayerLightSize");
++
++                b.Property<int>("RHue");
++
++                b.Property<int>("Revision");
++
++                b.Property<Guid>("Right");
++
++                b.Property<string>("Sound");
++
++                b.Property<byte[]>("TileData");
++
++                b.Property<long>("TimeCreated");
++
++                b.Property<Guid>("Up");
++
++                b.Property<Guid>("WeatherAnimationId")
++                    .HasColumnName("WeatherAnimation");
++
++                b.Property<int>("WeatherIntensity");
++
++                b.Property<int>("WeatherXSpeed");
++
++                b.Property<int>("WeatherYSpeed");
++
++                b.Property<int>("ZoneType");
++
++                b.HasKey("Id");
++
++                b.ToTable("Maps");
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.AnimationBase", b =>
++            {
++                b.OwnsOne("Intersect.GameObjects.AnimationLayer", "Lower", b1 =>
++                {
++                    b1.Property<Guid>("AnimationBaseId");
++
++                    b1.Property<bool>("AlternateRenderLayer");
++
++                    b1.Property<bool>("DisableRotations");
++
++                    b1.Property<int>("FrameCount");
++
++                    b1.Property<int>("FrameSpeed");
++
++                    b1.Property<string>("Light");
++
++                    b1.Property<int>("LoopCount");
++
++                    b1.Property<string>("Sprite");
++
++                    b1.Property<int>("XFrames");
++
++                    b1.Property<int>("YFrames");
++
++                    b1.ToTable("Animations");
++
++                    b1.HasOne("Intersect.GameObjects.AnimationBase")
++                        .WithOne("Lower")
++                        .HasForeignKey("Intersect.GameObjects.AnimationLayer", "AnimationBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++
++                b.OwnsOne("Intersect.GameObjects.AnimationLayer", "Upper", b1 =>
++                {
++                    b1.Property<Guid>("AnimationBaseId");
++
++                    b1.Property<bool>("AlternateRenderLayer");
++
++                    b1.Property<bool>("DisableRotations");
++
++                    b1.Property<int>("FrameCount");
++
++                    b1.Property<int>("FrameSpeed");
++
++                    b1.Property<string>("Light");
++
++                    b1.Property<int>("LoopCount");
++
++                    b1.Property<string>("Sprite");
++
++                    b1.Property<int>("XFrames");
++
++                    b1.Property<int>("YFrames");
++
++                    b1.ToTable("Animations");
++
++                    b1.HasOne("Intersect.GameObjects.AnimationBase")
++                        .WithOne("Upper")
++                        .HasForeignKey("Intersect.GameObjects.AnimationLayer", "AnimationBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ItemBase", b =>
++            {
++                b.OwnsOne("Intersect.GameObjects.ConsumableData", "Consumable", b1 =>
++                {
++                    b1.Property<Guid>("ItemBaseId");
++
++                    b1.Property<int>("Percentage");
++
++                    b1.Property<byte>("Type");
++
++                    b1.Property<int>("Value");
++
++                    b1.ToTable("Items");
++
++                    b1.HasOne("Intersect.GameObjects.ItemBase")
++                        .WithOne("Consumable")
++                        .HasForeignKey("Intersect.GameObjects.ConsumableData", "ItemBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++
++                b.OwnsOne("Intersect.GameObjects.EffectData", "Effect", b1 =>
++                {
++                    b1.Property<Guid>("ItemBaseId");
++
++                    b1.Property<int>("Percentage");
++
++                    b1.Property<byte>("Type");
++
++                    b1.ToTable("Items");
++
++                    b1.HasOne("Intersect.GameObjects.ItemBase")
++                        .WithOne("Effect")
++                        .HasForeignKey("Intersect.GameObjects.EffectData", "ItemBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.ResourceBase", b =>
++            {
++                b.OwnsOne("Intersect.GameObjects.ResourceState", "Exhausted", b1 =>
++                {
++                    b1.Property<Guid>("ResourceBaseId");
++
++                    b1.Property<string>("Graphic");
++
++                    b1.Property<bool>("GraphicFromTileset");
++
++                    b1.Property<int>("Height");
++
++                    b1.Property<bool>("RenderBelowEntities");
++
++                    b1.Property<int>("Width");
++
++                    b1.Property<int>("X");
++
++                    b1.Property<int>("Y");
++
++                    b1.ToTable("Resources");
++
++                    b1.HasOne("Intersect.GameObjects.ResourceBase")
++                        .WithOne("Exhausted")
++                        .HasForeignKey("Intersect.GameObjects.ResourceState", "ResourceBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++
++                b.OwnsOne("Intersect.GameObjects.ResourceState", "Initial", b1 =>
++                {
++                    b1.Property<Guid>("ResourceBaseId");
++
++                    b1.Property<string>("Graphic");
++
++                    b1.Property<bool>("GraphicFromTileset");
++
++                    b1.Property<int>("Height");
++
++                    b1.Property<bool>("RenderBelowEntities");
++
++                    b1.Property<int>("Width");
++
++                    b1.Property<int>("X");
++
++                    b1.Property<int>("Y");
++
++                    b1.ToTable("Resources");
++
++                    b1.HasOne("Intersect.GameObjects.ResourceBase")
++                        .WithOne("Initial")
++                        .HasForeignKey("Intersect.GameObjects.ResourceState", "ResourceBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++            });
++
++            modelBuilder.Entity("Intersect.GameObjects.SpellBase", b =>
++            {
++                b.OwnsOne("Intersect.GameObjects.SpellCombatData", "Combat", b1 =>
++                {
++                    b1.Property<Guid>("SpellBaseId");
++
++                    b1.Property<int>("CastRange");
++
++                    b1.Property<int>("CritChance");
++
++                    b1.Property<double>("CritMultiplier");
++
++                    b1.Property<int>("DamageType");
++
++                    b1.Property<int>("Duration");
++
++                    b1.Property<int>("Effect");
++
++                    b1.Property<bool>("Friendly");
++
++                    b1.Property<int>("HitRadius");
++
++                    b1.Property<bool>("HoTDoT");
++
++                    b1.Property<int>("HotDotInterval");
++
++                    b1.Property<int>("OnHitDuration")
++                        .HasColumnName("OnHit");
++
++                    b1.Property<string>("PercentageStatDiffJson")
++                        .HasColumnName("PercentageStatDiff");
++
++                    b1.Property<Guid>("ProjectileId")
++                        .HasColumnName("Projectile");
++
++                    b1.Property<int>("Scaling");
++
++                    b1.Property<int>("ScalingStat");
++
++                    b1.Property<string>("StatDiffJson")
++                        .HasColumnName("StatDiff");
++
++                    b1.Property<int>("TargetType");
++
++                    b1.Property<string>("TransformSprite");
++
++                    b1.Property<int>("TrapDuration")
++                        .HasColumnName("Trap");
++
++                    b1.Property<string>("VitalDiffJson")
++                        .HasColumnName("VitalDiff");
++
++                    b1.ToTable("Spells");
++
++                    b1.HasOne("Intersect.GameObjects.SpellBase")
++                        .WithOne("Combat")
++                        .HasForeignKey("Intersect.GameObjects.SpellCombatData", "SpellBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++
++                b.OwnsOne("Intersect.GameObjects.SpellDashOpts", "Dash", b1 =>
++                {
++                    b1.Property<Guid>("SpellBaseId");
++
++                    b1.Property<bool>("IgnoreActiveResources");
++
++                    b1.Property<bool>("IgnoreInactiveResources");
++
++                    b1.Property<bool>("IgnoreMapBlocks");
++
++                    b1.Property<bool>("IgnoreZDimensionAttributes");
++
++                    b1.ToTable("Spells");
++
++                    b1.HasOne("Intersect.GameObjects.SpellBase")
++                        .WithOne("Dash")
++                        .HasForeignKey("Intersect.GameObjects.SpellDashOpts", "SpellBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++
++                b.OwnsOne("Intersect.GameObjects.SpellWarpData", "Warp", b1 =>
++                {
++                    b1.Property<Guid>("SpellBaseId");
++
++                    b1.Property<int>("Dir");
++
++                    b1.Property<Guid>("MapId");
++
++                    b1.Property<int>("X");
++
++                    b1.Property<int>("Y");
++
++                    b1.ToTable("Spells");
++
++                    b1.HasOne("Intersect.GameObjects.SpellBase")
++                        .WithOne("Warp")
++                        .HasForeignKey("Intersect.GameObjects.SpellWarpData", "SpellBaseId")
++                        .OnDelete(DeleteBehavior.Cascade);
++                });
++            });
++#pragma warning restore 612, 618
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.cs b/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.cs
+new file mode 100644
+index 00000000..620e933a
+--- /dev/null
++++ b/Intersect.Server/Migrations/Game/20200402142818_PlayerHair_ClassEdits.cs
+@@ -0,0 +1,21 @@
++﻿using Microsoft.EntityFrameworkCore.Migrations;
++namespace Intersect.Server.Migrations.Game
++{
++    public partial class PlayerHair_ClassEdits : Migration
++    {
++        protected override void Up(MigrationBuilder migrationBuilder)
++        {
++            migrationBuilder.AddColumn<string>(
++                 name: "CustomSpriteLayers",
++                 table: "Classes",
++                 nullable: true);
++         }
++
++         protected override void Down(MigrationBuilder migrationBuilder)
++         {
++             migrationBuilder.DropColumn(
++                 name: "CustomSpriteLayers",
++                 table: "Classes");
++         }
++     }
++ }
+\ No newline at end of file
+diff --git a/Intersect.Server/Migrations/Game/GameContextModelSnapshot.cs b/Intersect.Server/Migrations/Game/GameContextModelSnapshot.cs
+index 0e61bb10..161d7dfa 100644
+--- a/Intersect.Server/Migrations/Game/GameContextModelSnapshot.cs
++++ b/Intersect.Server/Migrations/Game/GameContextModelSnapshot.cs
+@@ -75,6 +75,9 @@ protected override void BuildModel(ModelBuilder modelBuilder)
+                     b.Property<string>("JsonBaseVitals")
+                         .HasColumnName("BaseVitals");
+ 
++                    b.Property<string>("JsonCustomSpriteLayers")
++                         .HasColumnName("CustomSpriteLayers");
++
+                     b.Property<string>("JsonItems")
+                         .HasColumnName("Items");
+ 
+diff --git a/Intersect.Server/Migrations/PlayerContextModelSnapshot.cs b/Intersect.Server/Migrations/PlayerContextModelSnapshot.cs
+index 994f85e4..3790c879 100644
+--- a/Intersect.Server/Migrations/PlayerContextModelSnapshot.cs
++++ b/Intersect.Server/Migrations/PlayerContextModelSnapshot.cs
+@@ -335,6 +335,9 @@ protected override void BuildModel(ModelBuilder modelBuilder)
+ 
+                     b.Property<Guid>("ClassId");
+ 
++					b.Property<string>("CustomSpriteLayersJson")
++                        .HasColumnName("CustomSpriteLayers");
++						
+                     b.Property<DateTime?>("CreationDate");
+ 
+                     b.Property<int>("Dir");
+diff --git a/Intersect.Server/Networking/PacketHandler.cs b/Intersect.Server/Networking/PacketHandler.cs
+index 6ffebec3..55dbd7a0 100644
+--- a/Intersect.Server/Networking/PacketHandler.cs
++++ b/Intersect.Server/Networking/PacketHandler.cs
+@@ -1464,6 +1464,12 @@ public void HandlePacket(Client client, CreateCharacterPacket packet)
+                 newChar.Gender = classBase.Sprites[spriteIndex].Gender;
+             }
+ 
++            // Get our custom layers from the packet.
++                             for (var i = 0; i < (int)Enums.CustomSpriteLayers.CustomCount; i++)
++                                {
++                 newChar.CustomSpriteLayers[i] = packet.CustomSpriteLayers[i] != -1 ? classBase.CustomSpriteLayers[(Enums.CustomSpriteLayers)i][packet.CustomSpriteLayers[i]].Texture : String.Empty;
++                               }
++
+             client.LoadCharacter(newChar);
+ 
+             newChar.SetVital(Vitals.Health, classBase.BaseVital[(int) Vitals.Health]);
+diff --git a/Intersect.Server/Networking/PacketSender.cs b/Intersect.Server/Networking/PacketSender.cs
+index b7626eac..0e3f95a7 100644
+--- a/Intersect.Server/Networking/PacketSender.cs
++++ b/Intersect.Server/Networking/PacketSender.cs
+@@ -361,9 +361,11 @@ public static void SendEntityDataTo(Player player, Entity en)
+             }
+ 
+             //If a player, send equipment to all (for paperdolls)
++            //Also send Custom Sprite Layers
+             if (en.GetType() == typeof(Player))
+             {
+                 SendPlayerEquipmentTo(player, (Player) en);
++                SendCustomSpriteLayersTo(player, (Player)en);
+             }
+ 
+             if (en.GetType() == typeof(Npc))
+@@ -394,6 +396,8 @@ public static void SendMapEntitiesTo(Player player, ConcurrentDictionary<Guid, E
+             player.SendPacket(new MapEntitiesPacket(enPackets.ToArray()));
+ 
+             SendMapEntityEquipmentTo(player, sendEntities); //Send the equipment of each player
++            SendMapCustomSpriteLayersTo(player, sendEntities); //Send the custom sprite layers of each player.
++          
+ 
+             for (var i = 0; i < sendEntities.Count; i++)
+             {
+@@ -404,6 +408,22 @@ public static void SendMapEntitiesTo(Player player, ConcurrentDictionary<Guid, E
+             }
+         }
+ 
++        public static void SendMapCustomSpriteLayersTo(Player player, List<Entity> entities)
++         {
++             for (var i = 0; i<entities.Count; i++)
++             {
++                 if (entities[i] != null && entities[i] != player)
++                 {
++                     //If a player, send equipment to all (for paperdolls)
++                     if (entities[i].GetType() == typeof(Player) && player != entities[i])
++                     {
++                         SendCustomSpriteLayersTo(player, (Player) entities[i]);
++                     }
++                 }
++             }
++         }
++
++
+         public static void SendMapEntityEquipmentTo(Player player, List<Entity> entities)
+         {
+             for (var i = 0; i < entities.Count; i++)
+@@ -451,6 +471,7 @@ public static void SendEntityDataToProximity(Entity en, Player except = null)
+             if (en.GetType() == typeof(Player))
+             {
+                 SendPlayerEquipmentToProximity((Player) en);
++                SendCustomSpriteLayersToProximity((Player)en);
+             }
+ 
+             if (en.GetType() == typeof(Npc))
+@@ -459,8 +480,25 @@ public static void SendEntityDataToProximity(Entity en, Player except = null)
+             }
+         }
+ 
+-        //EntityDataPacket
+-        public static void SendEntityDataToMap(Entity en, MapInstance map, Player except = null)
++
++        //CustomSpriteLayerPacket
++         public static CustomSpriteLayersPacket GenerateCustomSpriteLayersPacket(Player en)
++         {
++             return new CustomSpriteLayersPacket(en.Id, en.CustomSpriteLayers);
++         }
++
++         public static void SendCustomSpriteLayersTo(Player forPlayer, Player en)
++         {
++             forPlayer.SendPacket(GenerateCustomSpriteLayersPacket(en));
++         }
++
++         public static void SendCustomSpriteLayersToProximity(Player en)
++         {
++ SendDataToProximity(en.MapId, GenerateCustomSpriteLayersPacket(en));
++         }
++
++//EntityDataPacket
++public static void SendEntityDataToMap(Entity en, MapInstance map, Player except = null)
+         {
+             if (en == null)
+             {
+@@ -1257,7 +1295,7 @@ public static void SendPlayerCharacters(Client client)
+                     characters.Add(
+                         new CharacterPacket(
+                             character.Id, character.Name, character.Sprite, character.Face, character.Level,
+-                            ClassBase.GetName(character.ClassId), equipment
++                            ClassBase.GetName(character.ClassId), equipment, character.CustomSpriteLayers
+                         )
+                     );
+                 }
+-- 
+2.31.1.windows.1
+
+
+From 891024f996a5b586da9b98e4fcc4e64cc1166268 Mon Sep 17 00:00:00 2001
+From: Justn53 <justn53@gmail.com>
+Date: Wed, 5 May 2021 03:24:00 -0500
+Subject: [PATCH 2/4] Update frmClass.Designer.cs
+
+---
+ Intersect.Editor/Forms/Editors/frmClass.Designer.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/Intersect.Editor/Forms/Editors/frmClass.Designer.cs b/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
+index 604f8727..c4456be8 100644
+--- a/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
++++ b/Intersect.Editor/Forms/Editors/frmClass.Designer.cs
+@@ -1174,7 +1174,7 @@ private void InitializeComponent()
+             this.cmbHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
+             this.cmbHair.BorderStyle = System.Windows.Forms.ButtonBorderStyle.Solid;
+             this.cmbHair.ButtonColor = System.Drawing.Color.FromArgb(((int)(((byte)(43)))), ((int)(((byte)(43)))), ((int)(((byte)(43)))));
+-            this.cmbHair.ButtonIcon = ((System.Drawing.Bitmap)(resources.GetObject("cmbHair.ButtonIcon")));
++           
+             this.cmbHair.DrawDropdownHoverOutline = false;
+             this.cmbHair.DrawFocusRectangle = false;
+             this.cmbHair.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
+-- 
+2.31.1.windows.1
+
+
+From e99f6d31c4751fa407246fe57adb6c3b6b6cc8f6 Mon Sep 17 00:00:00 2001
+From: Justn53 <justn53@gmail.com>
+Date: Wed, 5 May 2021 03:33:32 -0500
+Subject: [PATCH 3/4] Update Player.cs
+
+---
+ Intersect.Client/Entities/Player.cs | 17 ++---------------
+ 1 file changed, 2 insertions(+), 15 deletions(-)
+
+diff --git a/Intersect.Client/Entities/Player.cs b/Intersect.Client/Entities/Player.cs
+index 25d94da8..fd66834e 100644
+--- a/Intersect.Client/Entities/Player.cs
++++ b/Intersect.Client/Entities/Player.cs
+@@ -259,6 +259,7 @@ public override void Load(EntityPacket packet)
+                 TargetBox.Hide();
+             }
+ 
++            //Change the .Weapon if you add more sprite animations
+             for (var i = 0; i <= (int)SpriteAnimations.Weapon; i++)
+                 {
+                 CustomSpriteLayersAnimationTexture[(SpriteAnimations)i] = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
+@@ -2050,21 +2051,7 @@ public virtual void DrawCustomSpriteLayer(CustomSpriteLayers layer, GameContentM
+                              case 3:
+                         d = 2;
+                         break;
+-                    case 4: // UpLeft
+-                        d = 5;
+-
+-                        break;
+-                    case 5: // UpRight
+-                        d = 7;
+-
+-                        break;
+-                    case 6: // DownLeft
+-                        d = 4;
+-
+-                        break;
+-                    case 7: // DownRight
+-                        d = 6;
+-                        break;
++                    
+                     default:
+                      Dir = 0;
+                         d = 3;
+-- 
+2.31.1.windows.1
+
+
+From dafc84d2a0d1d0c8309ef799d81c480507a489c4 Mon Sep 17 00:00:00 2001
+From: Justn53 <justn53@gmail.com>
+Date: Wed, 5 May 2021 04:30:20 -0500
+Subject: [PATCH 4/4] Added Hair events
+
+---
+ .../Events/Commands/EventCommands.cs          |   9 +
+ Intersect (Core)/GameObjects/Events/Enums.cs  |   3 +
+ .../Forms/Editors/Events/CommandPrinter.cs    |   7 +-
+ .../EventCommand_ChangeHair.Designer.cs       | 142 ++++++++++
+ .../Event Commands/EventCommand_ChangeHair.cs |  88 ++++++
+ .../Forms/Editors/Events/frmEvent.Designer.cs | 257 +++++++++---------
+ .../Forms/Editors/Events/frmEvent.cs          |   8 +-
+ Intersect.Editor/Intersect.Editor.csproj      |   6 +
+ Intersect.Editor/Localization/Strings.cs      |  16 ++
+ .../Entities/Events/CommandProcessing.cs      |  17 +-
+ 10 files changed, 423 insertions(+), 130 deletions(-)
+ create mode 100644 Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.Designer.cs
+ create mode 100644 Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.cs
+
+diff --git a/Intersect (Core)/GameObjects/Events/Commands/EventCommands.cs b/Intersect (Core)/GameObjects/Events/Commands/EventCommands.cs
+index 930bd951..0049ab3d 100644
+--- a/Intersect (Core)/GameObjects/Events/Commands/EventCommands.cs	
++++ b/Intersect (Core)/GameObjects/Events/Commands/EventCommands.cs	
+@@ -562,6 +562,15 @@ public class ChangeFaceCommand : EventCommand
+ 
+     }
+ 
++    public class ChangeHairCommand : EventCommand
++     {
++
++         public override EventCommandType Type { get; } = EventCommandType.ChangeHair;
++
++         public string Hair { get; set; } = "";
++
++     }
++
+     public class ChangeGenderCommand : EventCommand
+     {
+ 
+diff --git a/Intersect (Core)/GameObjects/Events/Enums.cs b/Intersect (Core)/GameObjects/Events/Enums.cs
+index bf0aa70e..d85849bf 100644
+--- a/Intersect (Core)/GameObjects/Events/Enums.cs	
++++ b/Intersect (Core)/GameObjects/Events/Enums.cs	
+@@ -219,6 +219,9 @@ public enum EventCommandType
+         ChangePlayerColor,
+ 
+         ChangeName,
++
++        //Change Hair
++         ChangeHair,
+     }
+ 
+ }
+diff --git a/Intersect.Editor/Forms/Editors/Events/CommandPrinter.cs b/Intersect.Editor/Forms/Editors/Events/CommandPrinter.cs
+index 0e84f83c..d0d9f8bb 100644
+--- a/Intersect.Editor/Forms/Editors/Events/CommandPrinter.cs
++++ b/Intersect.Editor/Forms/Editors/Events/CommandPrinter.cs
+@@ -733,7 +733,12 @@ private static string GetCommandText(ChangeFaceCommand command, MapInstance map)
+             return Strings.EventCommandList.setface.ToString(command.Face);
+         }
+ 
+-        private static string GetCommandText(ChangeNameColorCommand command, MapInstance map)
++        private static string GetCommandText(ChangeHairCommand command, MapInstance map)
++         {
++             return Strings.EventCommandList.sethair.ToString(command.Hair);
++         }
++
++    private static string GetCommandText(ChangeNameColorCommand command, MapInstance map)
+         {
+             if (command.Remove)
+             {
+diff --git a/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.Designer.cs b/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.Designer.cs
+new file mode 100644
+index 00000000..c649f0ea
+--- /dev/null
++++ b/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.Designer.cs	
+@@ -0,0 +1,142 @@
++﻿using DarkUI.Controls;
++
++namespace Intersect.Editor.Forms.Editors.Events.Event_Commands
++{
++    partial class EventCommandChangeHair
++    {
++        /// <summary> 
++        /// Required designer variable.
++        /// </summary>
++        private System.ComponentModel.IContainer components = null;
++
++        /// <summary> 
++        /// Clean up any resources being used.
++        /// </summary>
++        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
++        protected override void Dispose(bool disposing)
++        {
++            if (disposing && (components != null))
++            {
++                components.Dispose();
++            }
++            base.Dispose(disposing);
++        }
++
++        #region Component Designer generated code
++
++        /// <summary> 
++        /// Required method for Designer support - do not modify 
++        /// the contents of this method with the code editor.
++        /// </summary>
++        private void InitializeComponent()
++        {
++            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(EventCommandChangeHair));
++            this.grpChangeHair = new DarkUI.Controls.DarkGroupBox();
++            this.pnlPreview = new System.Windows.Forms.Panel();
++            this.cmbHair = new DarkUI.Controls.DarkComboBox();
++            this.lblHair = new System.Windows.Forms.Label();
++            this.btnCancel = new DarkUI.Controls.DarkButton();
++            this.btnSave = new DarkUI.Controls.DarkButton();
++            this.grpChangeHair.SuspendLayout();
++            this.SuspendLayout();
++            // 
++            // grpChangeHair
++            // 
++            this.grpChangeHair.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(60)))), ((int)(((byte)(63)))), ((int)(((byte)(65)))));
++            this.grpChangeHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
++            this.grpChangeHair.Controls.Add(this.pnlPreview);
++            this.grpChangeHair.Controls.Add(this.cmbHair);
++            this.grpChangeHair.Controls.Add(this.lblHair);
++            this.grpChangeHair.Controls.Add(this.btnCancel);
++            this.grpChangeHair.Controls.Add(this.btnSave);
++            this.grpChangeHair.ForeColor = System.Drawing.Color.Gainsboro;
++            this.grpChangeHair.Location = new System.Drawing.Point(3, 3);
++            this.grpChangeHair.Name = "grpChangeHair";
++            this.grpChangeHair.Size = new System.Drawing.Size(259, 126);
++            this.grpChangeHair.TabIndex = 17;
++            this.grpChangeHair.TabStop = false;
++            this.grpChangeHair.Text = "Change Hair:";
++            // 
++            // pnlPreview
++            // 
++            this.pnlPreview.Location = new System.Drawing.Point(170, 19);
++            this.pnlPreview.Name = "pnlPreview";
++            this.pnlPreview.Size = new System.Drawing.Size(83, 101);
++            this.pnlPreview.TabIndex = 23;
++            // 
++            // cmbHair
++            // 
++            this.cmbHair.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(69)))), ((int)(((byte)(73)))), ((int)(((byte)(74)))));
++            this.cmbHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
++            this.cmbHair.BorderStyle = System.Windows.Forms.ButtonBorderStyle.Solid;
++            this.cmbHair.ButtonColor = System.Drawing.Color.FromArgb(((int)(((byte)(43)))), ((int)(((byte)(43)))), ((int)(((byte)(43)))));
++          
++            this.cmbHair.DrawDropdownHoverOutline = false;
++            this.cmbHair.DrawFocusRectangle = false;
++            this.cmbHair.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
++            this.cmbHair.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
++            this.cmbHair.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
++            this.cmbHair.ForeColor = System.Drawing.Color.Gainsboro;
++            this.cmbHair.FormattingEnabled = true;
++            this.cmbHair.Location = new System.Drawing.Point(47, 19);
++            this.cmbHair.Name = "cmbHair";
++            this.cmbHair.Size = new System.Drawing.Size(117, 21);
++            this.cmbHair.TabIndex = 22;
++            this.cmbHair.Text = null;
++            this.cmbHair.TextPadding = new System.Windows.Forms.Padding(2);
++            this.cmbHair.SelectedIndexChanged += new System.EventHandler(this.cmbSprite_SelectedIndexChanged);
++            // 
++            // lblHair
++            // 
++            this.lblHair.AutoSize = true;
++            this.lblHair.Location = new System.Drawing.Point(4, 22);
++            this.lblHair.Name = "lblHair";
++            this.lblHair.Size = new System.Drawing.Size(29, 13);
++            this.lblHair.TabIndex = 21;
++            this.lblHair.Text = "Hair:";
++            // 
++            // btnCancel
++            // 
++            this.btnCancel.Location = new System.Drawing.Point(89, 97);
++            this.btnCancel.Name = "btnCancel";
++            this.btnCancel.Padding = new System.Windows.Forms.Padding(5);
++            this.btnCancel.Size = new System.Drawing.Size(75, 23);
++            this.btnCancel.TabIndex = 20;
++            this.btnCancel.Text = "Cancel";
++            this.btnCancel.Click += new System.EventHandler(this.btnCancel_Click);
++            // 
++            // btnSave
++            // 
++            this.btnSave.Location = new System.Drawing.Point(7, 97);
++            this.btnSave.Name = "btnSave";
++            this.btnSave.Padding = new System.Windows.Forms.Padding(5);
++            this.btnSave.Size = new System.Drawing.Size(75, 23);
++            this.btnSave.TabIndex = 19;
++            this.btnSave.Text = "Ok";
++            this.btnSave.Click += new System.EventHandler(this.btnSave_Click);
++            // 
++            // EventCommandChangeHair
++            // 
++            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
++            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
++            this.AutoSize = true;
++            this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(45)))), ((int)(((byte)(45)))), ((int)(((byte)(48)))));
++            this.Controls.Add(this.grpChangeHair);
++            this.Name = "EventCommandChangeHair";
++            this.Size = new System.Drawing.Size(268, 132);
++            this.grpChangeHair.ResumeLayout(false);
++            this.grpChangeHair.PerformLayout();
++            this.ResumeLayout(false);
++
++        }
++
++        #endregion
++
++        private DarkGroupBox grpChangeHair;
++        private DarkButton btnCancel;
++        private DarkButton btnSave;
++        private System.Windows.Forms.Label lblHair;
++        private DarkComboBox cmbHair;
++        private System.Windows.Forms.Panel pnlPreview;
++    }
++}
+\ No newline at end of file
+diff --git a/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.cs b/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.cs
+new file mode 100644
+index 00000000..a3e5c1e0
+--- /dev/null
++++ b/Intersect.Editor/Forms/Editors/Events/Event Commands/EventCommand_ChangeHair.cs	
+@@ -0,0 +1,88 @@
++﻿using System;
++using System.Drawing;
++using System.IO;
++using System.Windows.Forms;
++
++using Intersect.Editor.Content;
++using Intersect.Editor.Localization;
++using Intersect.GameObjects.Events.Commands;
++
++namespace Intersect.Editor.Forms.Editors.Events.Event_Commands
++{
++
++    public partial class EventCommandChangeHair : UserControl
++    {
++
++        private readonly FrmEvent mEventEditor;
++
++        private ChangeHairCommand mMyCommand;
++
++        public EventCommandChangeHair(ChangeHairCommand refCommand, FrmEvent editor)
++        {
++            InitializeComponent();
++            mMyCommand = refCommand;
++            mEventEditor = editor;
++            cmbHair.Items.Clear();
++            cmbHair.Items.Add(Strings.General.none);
++            cmbHair.Items.AddRange(GameContentManager.GetSmartSortedTextureNames(GameContentManager.TextureType.Hairs));
++            if (cmbHair.Items.IndexOf(mMyCommand.Hair) > -1)
++            {
++                cmbHair.SelectedIndex = cmbHair.Items.IndexOf(mMyCommand.Hair);
++            }
++            else
++            {
++                cmbHair.SelectedIndex = 0;
++            }
++
++            UpdatePreview();
++            InitLocalization();
++        }
++
++        private void InitLocalization()
++        {
++            grpChangeHair.Text = Strings.EventChangeHair.title;
++            lblHair.Text = Strings.EventChangeHair.label;
++            btnSave.Text = Strings.EventChangeHair.okay;
++            btnCancel.Text = Strings.EventChangeHair.cancel;
++        }
++
++        private void UpdatePreview()
++        {
++            var destBitmap = new Bitmap(pnlPreview.Width, pnlPreview.Height);
++            var g = Graphics.FromImage(destBitmap);
++            g.Clear(System.Drawing.Color.Black);
++            if (File.Exists("resources/hairs/" + cmbHair.Text))
++            {
++                var sourceBitmap = new Bitmap("resources/hairs/" + cmbHair.Text);
++                g.DrawImage(
++                    sourceBitmap,
++                    new Rectangle(
++                        pnlPreview.Width / 2 - sourceBitmap.Width / 8, pnlPreview.Height / 2 - sourceBitmap.Height / 8,
++                        sourceBitmap.Width / 4, sourceBitmap.Height / 4
++                    ), new Rectangle(0, 0, sourceBitmap.Width / 4, sourceBitmap.Height / 4), GraphicsUnit.Pixel
++                );
++            }
++
++            g.Dispose();
++            pnlPreview.BackgroundImage = destBitmap;
++        }
++
++        private void btnSave_Click(object sender, EventArgs e)
++        {
++            mMyCommand.Hair = cmbHair.Text;
++            mEventEditor.FinishCommandEdit();
++        }
++
++        private void btnCancel_Click(object sender, EventArgs e)
++        {
++            mEventEditor.CancelCommandEdit();
++        }
++
++        private void cmbSprite_SelectedIndexChanged(object sender, EventArgs e)
++        {
++            UpdatePreview();
++        }
++
++    }
++
++}
+\ No newline at end of file
+diff --git a/Intersect.Editor/Forms/Editors/Events/frmEvent.Designer.cs b/Intersect.Editor/Forms/Editors/Events/frmEvent.Designer.cs
+index 1c024aa1..da002854 100644
+--- a/Intersect.Editor/Forms/Editors/Events/frmEvent.Designer.cs
++++ b/Intersect.Editor/Forms/Editors/Events/frmEvent.Designer.cs
+@@ -74,7 +74,8 @@ private void InitializeComponent()
+             System.Windows.Forms.TreeNode treeNode28 = new System.Windows.Forms.TreeNode("Change Name Color");
+             System.Windows.Forms.TreeNode treeNode29 = new System.Windows.Forms.TreeNode("Change Player Label");
+             System.Windows.Forms.TreeNode treeNode30 = new System.Windows.Forms.TreeNode("Change Player Name");
+-            System.Windows.Forms.TreeNode treeNode31 = new System.Windows.Forms.TreeNode("Player Control", new System.Windows.Forms.TreeNode[] {
++            System.Windows.Forms.TreeNode treeNode31 = new System.Windows.Forms.TreeNode("Change Hair");
++            System.Windows.Forms.TreeNode treeNode32 = new System.Windows.Forms.TreeNode("Player Control", new System.Windows.Forms.TreeNode[] {
+             treeNode14,
+             treeNode15,
+             treeNode16,
+@@ -91,18 +92,18 @@ private void InitializeComponent()
+             treeNode27,
+             treeNode28,
+             treeNode29,
+-            treeNode30});
+-            System.Windows.Forms.TreeNode treeNode32 = new System.Windows.Forms.TreeNode("Warp Player");
+-            System.Windows.Forms.TreeNode treeNode33 = new System.Windows.Forms.TreeNode("Set Move Route");
+-            System.Windows.Forms.TreeNode treeNode34 = new System.Windows.Forms.TreeNode("Wait for Route Completion");
+-            System.Windows.Forms.TreeNode treeNode35 = new System.Windows.Forms.TreeNode("Hold Player");
+-            System.Windows.Forms.TreeNode treeNode36 = new System.Windows.Forms.TreeNode("Release Player");
+-            System.Windows.Forms.TreeNode treeNode37 = new System.Windows.Forms.TreeNode("Spawn NPC");
+-            System.Windows.Forms.TreeNode treeNode38 = new System.Windows.Forms.TreeNode("Despawn NPC");
+-            System.Windows.Forms.TreeNode treeNode39 = new System.Windows.Forms.TreeNode("Hide Player");
+-            System.Windows.Forms.TreeNode treeNode40 = new System.Windows.Forms.TreeNode("Show Player");
+-            System.Windows.Forms.TreeNode treeNode41 = new System.Windows.Forms.TreeNode("Movement", new System.Windows.Forms.TreeNode[] {
+-            treeNode32,
++            treeNode30,
++            treeNode31});
++            System.Windows.Forms.TreeNode treeNode33 = new System.Windows.Forms.TreeNode("Warp Player");
++            System.Windows.Forms.TreeNode treeNode34 = new System.Windows.Forms.TreeNode("Set Move Route");
++            System.Windows.Forms.TreeNode treeNode35 = new System.Windows.Forms.TreeNode("Wait for Route Completion");
++            System.Windows.Forms.TreeNode treeNode36 = new System.Windows.Forms.TreeNode("Hold Player");
++            System.Windows.Forms.TreeNode treeNode37 = new System.Windows.Forms.TreeNode("Release Player");
++            System.Windows.Forms.TreeNode treeNode38 = new System.Windows.Forms.TreeNode("Spawn NPC");
++            System.Windows.Forms.TreeNode treeNode39 = new System.Windows.Forms.TreeNode("Despawn NPC");
++            System.Windows.Forms.TreeNode treeNode40 = new System.Windows.Forms.TreeNode("Hide Player");
++            System.Windows.Forms.TreeNode treeNode41 = new System.Windows.Forms.TreeNode("Show Player");
++            System.Windows.Forms.TreeNode treeNode42 = new System.Windows.Forms.TreeNode("Movement", new System.Windows.Forms.TreeNode[] {
+             treeNode33,
+             treeNode34,
+             treeNode35,
+@@ -110,39 +111,40 @@ private void InitializeComponent()
+             treeNode37,
+             treeNode38,
+             treeNode39,
+-            treeNode40});
+-            System.Windows.Forms.TreeNode treeNode42 = new System.Windows.Forms.TreeNode("Play Animation");
+-            System.Windows.Forms.TreeNode treeNode43 = new System.Windows.Forms.TreeNode("Play BGM");
+-            System.Windows.Forms.TreeNode treeNode44 = new System.Windows.Forms.TreeNode("Fadeout BGM");
+-            System.Windows.Forms.TreeNode treeNode45 = new System.Windows.Forms.TreeNode("Play Sound");
+-            System.Windows.Forms.TreeNode treeNode46 = new System.Windows.Forms.TreeNode("Stop Sounds");
+-            System.Windows.Forms.TreeNode treeNode47 = new System.Windows.Forms.TreeNode("Show Picture");
+-            System.Windows.Forms.TreeNode treeNode48 = new System.Windows.Forms.TreeNode("Hide Picture");
+-            System.Windows.Forms.TreeNode treeNode49 = new System.Windows.Forms.TreeNode("Special Effects", new System.Windows.Forms.TreeNode[] {
+-            treeNode42,
++            treeNode40,
++            treeNode41});
++            System.Windows.Forms.TreeNode treeNode43 = new System.Windows.Forms.TreeNode("Play Animation");
++            System.Windows.Forms.TreeNode treeNode44 = new System.Windows.Forms.TreeNode("Play BGM");
++            System.Windows.Forms.TreeNode treeNode45 = new System.Windows.Forms.TreeNode("Fadeout BGM");
++            System.Windows.Forms.TreeNode treeNode46 = new System.Windows.Forms.TreeNode("Play Sound");
++            System.Windows.Forms.TreeNode treeNode47 = new System.Windows.Forms.TreeNode("Stop Sounds");
++            System.Windows.Forms.TreeNode treeNode48 = new System.Windows.Forms.TreeNode("Show Picture");
++            System.Windows.Forms.TreeNode treeNode49 = new System.Windows.Forms.TreeNode("Hide Picture");
++            System.Windows.Forms.TreeNode treeNode50 = new System.Windows.Forms.TreeNode("Special Effects", new System.Windows.Forms.TreeNode[] {
+             treeNode43,
+             treeNode44,
+             treeNode45,
+             treeNode46,
+             treeNode47,
+-            treeNode48});
+-            System.Windows.Forms.TreeNode treeNode50 = new System.Windows.Forms.TreeNode("Start Quest");
+-            System.Windows.Forms.TreeNode treeNode51 = new System.Windows.Forms.TreeNode("Complete Quest Task");
+-            System.Windows.Forms.TreeNode treeNode52 = new System.Windows.Forms.TreeNode("End Quest");
+-            System.Windows.Forms.TreeNode treeNode53 = new System.Windows.Forms.TreeNode("Quest Control", new System.Windows.Forms.TreeNode[] {
+-            treeNode50,
++            treeNode48,
++            treeNode49});
++            System.Windows.Forms.TreeNode treeNode51 = new System.Windows.Forms.TreeNode("Start Quest");
++            System.Windows.Forms.TreeNode treeNode52 = new System.Windows.Forms.TreeNode("Complete Quest Task");
++            System.Windows.Forms.TreeNode treeNode53 = new System.Windows.Forms.TreeNode("End Quest");
++            System.Windows.Forms.TreeNode treeNode54 = new System.Windows.Forms.TreeNode("Quest Control", new System.Windows.Forms.TreeNode[] {
+             treeNode51,
+-            treeNode52});
+-            System.Windows.Forms.TreeNode treeNode54 = new System.Windows.Forms.TreeNode("Wait...");
+-            System.Windows.Forms.TreeNode treeNode55 = new System.Windows.Forms.TreeNode("Etc", new System.Windows.Forms.TreeNode[] {
+-            treeNode54});
+-            System.Windows.Forms.TreeNode treeNode56 = new System.Windows.Forms.TreeNode("Open Bank");
+-            System.Windows.Forms.TreeNode treeNode57 = new System.Windows.Forms.TreeNode("Open Shop");
+-            System.Windows.Forms.TreeNode treeNode58 = new System.Windows.Forms.TreeNode("Open Crafting Station");
+-            System.Windows.Forms.TreeNode treeNode59 = new System.Windows.Forms.TreeNode("Shop and Bank", new System.Windows.Forms.TreeNode[] {
+-            treeNode56,
++            treeNode52,
++            treeNode53});
++            System.Windows.Forms.TreeNode treeNode55 = new System.Windows.Forms.TreeNode("Wait...");
++            System.Windows.Forms.TreeNode treeNode56 = new System.Windows.Forms.TreeNode("Etc", new System.Windows.Forms.TreeNode[] {
++            treeNode55});
++            System.Windows.Forms.TreeNode treeNode57 = new System.Windows.Forms.TreeNode("Open Bank");
++            System.Windows.Forms.TreeNode treeNode58 = new System.Windows.Forms.TreeNode("Open Shop");
++            System.Windows.Forms.TreeNode treeNode59 = new System.Windows.Forms.TreeNode("Open Crafting Station");
++            System.Windows.Forms.TreeNode treeNode60 = new System.Windows.Forms.TreeNode("Shop and Bank", new System.Windows.Forms.TreeNode[] {
+             treeNode57,
+-            treeNode58});
++            treeNode58,
++            treeNode59});
+             this.lblName = new System.Windows.Forms.Label();
+             this.txtEventname = new DarkUI.Controls.DarkTextBox();
+             this.grpEntityOptions = new DarkUI.Controls.DarkGroupBox();
+@@ -918,96 +920,99 @@ private void InitializeComponent()
+             treeNode30.Name = "changename";
+             treeNode30.Tag = "52";
+             treeNode30.Text = "Change Player Name";
+-            treeNode31.Name = "playercontrol";
+-            treeNode31.Text = "Player Control";
+-            treeNode32.Name = "warpplayer";
+-            treeNode32.Tag = "23";
+-            treeNode32.Text = "Warp Player";
+-            treeNode33.Name = "setmoveroute";
+-            treeNode33.Tag = "24";
+-            treeNode33.Text = "Set Move Route";
+-            treeNode34.Name = "waitmoveroute";
+-            treeNode34.Tag = "25";
+-            treeNode34.Text = "Wait for Route Completion";
+-            treeNode35.Name = "holdplayer";
+-            treeNode35.Tag = "26";
+-            treeNode35.Text = "Hold Player";
+-            treeNode36.Name = "releaseplayer";
+-            treeNode36.Tag = "27";
+-            treeNode36.Text = "Release Player";
+-            treeNode37.Name = "spawnnpc";
+-            treeNode37.Tag = "28";
+-            treeNode37.Text = "Spawn NPC";
+-            treeNode38.Name = "despawnnpcs";
+-            treeNode38.Tag = "39";
+-            treeNode38.Text = "Despawn NPC";
+-            treeNode39.Name = "hideplayer";
+-            treeNode39.Tag = "45";
+-            treeNode39.Text = "Hide Player";
+-            treeNode40.Name = "showplayer";
+-            treeNode40.Tag = "46";
+-            treeNode40.Text = "Show Player";
+-            treeNode41.Name = "movement";
+-            treeNode41.Text = "Movement";
+-            treeNode42.Name = "playanimation";
+-            treeNode42.Tag = "29";
+-            treeNode42.Text = "Play Animation";
+-            treeNode43.Name = "playbgm";
+-            treeNode43.Tag = "30";
+-            treeNode43.Text = "Play BGM";
+-            treeNode44.Name = "fadeoutbgm";
+-            treeNode44.Tag = "31";
+-            treeNode44.Text = "Fadeout BGM";
+-            treeNode45.Name = "playsound";
+-            treeNode45.Tag = "32";
+-            treeNode45.Text = "Play Sound";
+-            treeNode46.Name = "stopsounds";
+-            treeNode46.Tag = "33";
+-            treeNode46.Text = "Stop Sounds";
+-            treeNode47.Name = "showpicture";
+-            treeNode47.Tag = "43";
+-            treeNode47.Text = "Show Picture";
+-            treeNode48.Name = "hidepicture";
+-            treeNode48.Tag = "44";
+-            treeNode48.Text = "Hide Picture";
+-            treeNode49.Name = "specialeffects";
+-            treeNode49.Text = "Special Effects";
+-            treeNode50.Name = "startquest";
+-            treeNode50.Tag = "40";
+-            treeNode50.Text = "Start Quest";
+-            treeNode51.Name = "completequesttask";
+-            treeNode51.Tag = "41";
+-            treeNode51.Text = "Complete Quest Task";
+-            treeNode52.Name = "endquest";
+-            treeNode52.Tag = "42";
+-            treeNode52.Text = "End Quest";
+-            treeNode53.Name = "questcontrol";
+-            treeNode53.Text = "Quest Control";
+-            treeNode54.Name = "wait";
+-            treeNode54.Tag = "34";
+-            treeNode54.Text = "Wait...";
+-            treeNode55.Name = "etc";
+-            treeNode55.Text = "Etc";
+-            treeNode56.Name = "openbank";
+-            treeNode56.Tag = "35";
+-            treeNode56.Text = "Open Bank";
+-            treeNode57.Name = "openshop";
+-            treeNode57.Tag = "36";
+-            treeNode57.Text = "Open Shop";
+-            treeNode58.Name = "opencraftingstation";
+-            treeNode58.Tag = "37";
+-            treeNode58.Text = "Open Crafting Station";
+-            treeNode59.Name = "shopandbank";
+-            treeNode59.Text = "Shop and Bank";
++            treeNode31.Name = "changehair";
++            treeNode31.Tag = "53";
++            treeNode31.Text = "Change Hair";
++            treeNode32.Name = "playercontrol";
++            treeNode32.Text = "Player Control";
++            treeNode33.Name = "warpplayer";
++            treeNode33.Tag = "23";
++            treeNode33.Text = "Warp Player";
++            treeNode34.Name = "setmoveroute";
++            treeNode34.Tag = "24";
++            treeNode34.Text = "Set Move Route";
++            treeNode35.Name = "waitmoveroute";
++            treeNode35.Tag = "25";
++            treeNode35.Text = "Wait for Route Completion";
++            treeNode36.Name = "holdplayer";
++            treeNode36.Tag = "26";
++            treeNode36.Text = "Hold Player";
++            treeNode37.Name = "releaseplayer";
++            treeNode37.Tag = "27";
++            treeNode37.Text = "Release Player";
++            treeNode38.Name = "spawnnpc";
++            treeNode38.Tag = "28";
++            treeNode38.Text = "Spawn NPC";
++            treeNode39.Name = "despawnnpcs";
++            treeNode39.Tag = "39";
++            treeNode39.Text = "Despawn NPC";
++            treeNode40.Name = "hideplayer";
++            treeNode40.Tag = "45";
++            treeNode40.Text = "Hide Player";
++            treeNode41.Name = "showplayer";
++            treeNode41.Tag = "46";
++            treeNode41.Text = "Show Player";
++            treeNode42.Name = "movement";
++            treeNode42.Text = "Movement";
++            treeNode43.Name = "playanimation";
++            treeNode43.Tag = "29";
++            treeNode43.Text = "Play Animation";
++            treeNode44.Name = "playbgm";
++            treeNode44.Tag = "30";
++            treeNode44.Text = "Play BGM";
++            treeNode45.Name = "fadeoutbgm";
++            treeNode45.Tag = "31";
++            treeNode45.Text = "Fadeout BGM";
++            treeNode46.Name = "playsound";
++            treeNode46.Tag = "32";
++            treeNode46.Text = "Play Sound";
++            treeNode47.Name = "stopsounds";
++            treeNode47.Tag = "33";
++            treeNode47.Text = "Stop Sounds";
++            treeNode48.Name = "showpicture";
++            treeNode48.Tag = "43";
++            treeNode48.Text = "Show Picture";
++            treeNode49.Name = "hidepicture";
++            treeNode49.Tag = "44";
++            treeNode49.Text = "Hide Picture";
++            treeNode50.Name = "specialeffects";
++            treeNode50.Text = "Special Effects";
++            treeNode51.Name = "startquest";
++            treeNode51.Tag = "40";
++            treeNode51.Text = "Start Quest";
++            treeNode52.Name = "completequesttask";
++            treeNode52.Tag = "41";
++            treeNode52.Text = "Complete Quest Task";
++            treeNode53.Name = "endquest";
++            treeNode53.Tag = "42";
++            treeNode53.Text = "End Quest";
++            treeNode54.Name = "questcontrol";
++            treeNode54.Text = "Quest Control";
++            treeNode55.Name = "wait";
++            treeNode55.Tag = "34";
++            treeNode55.Text = "Wait...";
++            treeNode56.Name = "etc";
++            treeNode56.Text = "Etc";
++            treeNode57.Name = "openbank";
++            treeNode57.Tag = "35";
++            treeNode57.Text = "Open Bank";
++            treeNode58.Name = "openshop";
++            treeNode58.Tag = "36";
++            treeNode58.Text = "Open Shop";
++            treeNode59.Name = "opencraftingstation";
++            treeNode59.Tag = "37";
++            treeNode59.Text = "Open Crafting Station";
++            treeNode60.Name = "shopandbank";
++            treeNode60.Text = "Shop and Bank";
+             this.lstCommands.Nodes.AddRange(new System.Windows.Forms.TreeNode[] {
+             treeNode5,
+             treeNode13,
+-            treeNode31,
+-            treeNode41,
+-            treeNode49,
+-            treeNode53,
+-            treeNode55,
+-            treeNode59});
++            treeNode32,
++            treeNode42,
++            treeNode50,
++            treeNode54,
++            treeNode56,
++            treeNode60});
+             this.lstCommands.Size = new System.Drawing.Size(445, 440);
+             this.lstCommands.TabIndex = 2;
+             this.lstCommands.NodeMouseDoubleClick += new System.Windows.Forms.TreeNodeMouseClickEventHandler(this.lstCommands_NodeMouseDoubleClick);
+diff --git a/Intersect.Editor/Forms/Editors/Events/frmEvent.cs b/Intersect.Editor/Forms/Editors/Events/frmEvent.cs
+index 562fe0c6..8cb241f9 100644
+--- a/Intersect.Editor/Forms/Editors/Events/frmEvent.cs
++++ b/Intersect.Editor/Forms/Editors/Events/frmEvent.cs
+@@ -606,7 +606,9 @@ private void lstCommands_NodeMouseDoubleClick(object sender, TreeNodeMouseClickE
+                     break;
+                 case EventCommandType.ChangeFace:
+                     tmpCommand = new ChangeFaceCommand();
+-
++                    break;
++                case EventCommandType.ChangeHair:
++                    tmpCommand = new ChangeHairCommand();
+                     break;
+                 case EventCommandType.ChangeGender:
+                     tmpCommand = new ChangeGenderCommand();
+@@ -1192,6 +1194,10 @@ private void OpenEditCommand(EventCommand command)
+                 case EventCommandType.ChangeFace:
+                     cmdWindow = new EventCommandChangeFace((ChangeFaceCommand) command, this);
+ 
++                    break;
++                case EventCommandType.ChangeHair:
++                    cmdWindow = new EventCommandChangeHair((ChangeHairCommand)command, this);
++
+                     break;
+                 case EventCommandType.ChangeGender:
+                     cmdWindow = new EventCommandChangeGender((ChangeGenderCommand) command, this);
+diff --git a/Intersect.Editor/Intersect.Editor.csproj b/Intersect.Editor/Intersect.Editor.csproj
+index afade6db..739397ed 100644
+--- a/Intersect.Editor/Intersect.Editor.csproj
++++ b/Intersect.Editor/Intersect.Editor.csproj
+@@ -100,6 +100,12 @@
+     <Compile Include="Forms\Controls\GameObjectList.Designer.cs">
+       <DependentUpon>GameObjectList.cs</DependentUpon>
+     </Compile>
++    <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangeHair.cs">
++      <SubType>UserControl</SubType>
++    </Compile>
++    <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangeHair.Designer.cs">
++      <DependentUpon>EventCommand_ChangeHair.cs</DependentUpon>
++    </Compile>
+     <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangePlayerColor.cs">
+       <SubType>UserControl</SubType>
+     </Compile>
+diff --git a/Intersect.Editor/Localization/Strings.cs b/Intersect.Editor/Localization/Strings.cs
+index dce7f840..859d2954 100644
+--- a/Intersect.Editor/Localization/Strings.cs
++++ b/Intersect.Editor/Localization/Strings.cs
+@@ -1243,6 +1243,19 @@ public struct EventChangeFace
+ 
+         }
+ 
++        public struct EventChangeHair
++         {
++
++             public static LocalizedString cancel = @"Cancel";
++
++             public static LocalizedString label = @"Hair:";
++
++             public static LocalizedString okay = @"Ok";
++
++             public static LocalizedString title = @"Change Hair";
++
++         }
++
+ 
+     public struct EventShowPicture
+         {
+@@ -1705,6 +1718,8 @@ public struct EventCommandList
+ 
+             public static LocalizedString setface = @"Set Player Face to {00}";
+ 
++            public static LocalizedString sethair = @"Set Player Hair to {00}";
++
+             public static LocalizedString setnamecolor = @"Set Player Name Color";
+ 
+             public static LocalizedString removenamecolor = @"Remove Player Name Color";
+@@ -1873,6 +1888,7 @@ public struct EventCommands
+                 {"changeplayerlabel", @"Change Player Label"},
+                 {"changeplayercolor", @"Change Player Color" },
+                 {"changename", @"Change Player Name" },
++                {"changehair", @"Change Hair"},
+             };
+ 
+         }
+diff --git a/Intersect.Server/Entities/Events/CommandProcessing.cs b/Intersect.Server/Entities/Events/CommandProcessing.cs
+index e7d158b0..c8b49234 100644
+--- a/Intersect.Server/Entities/Events/CommandProcessing.cs
++++ b/Intersect.Server/Entities/Events/CommandProcessing.cs
+@@ -553,8 +553,21 @@ Stack<CommandInstance> callStack
+             PacketSender.SendEntityDataToProximity(player);
+         }
+ 
+-        //Change Gender Command
+-        private static void ProcessCommand(
++         //Change Hair Command
++         private static void ProcessCommand(
++             ChangeHairCommand command,
++             Player player,
++             Event instance,
++             CommandInstance stackInfo,
++             Stack<CommandInstance> callStack
++         )
++         {
++             player.CustomSpriteLayers[(int)Enums.CustomSpriteLayers.Hair] = command.Hair;
++             PacketSender.SendCustomSpriteLayersToProximity(player);
++        }
++
++    //Change Gender Command
++    private static void ProcessCommand(
+             ChangeGenderCommand command,
+             Player player,
+             Event instance,
+-- 
+2.31.1.windows.1
+
