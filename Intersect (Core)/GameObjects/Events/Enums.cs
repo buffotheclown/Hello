@@ -219,6 +219,9 @@
         ChangePlayerColor,
 
         ChangeName,
+
+        //Change Hair
+         ChangeHair,
     }
 
 }

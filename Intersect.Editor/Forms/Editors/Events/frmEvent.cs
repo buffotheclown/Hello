@@ -606,7 +606,9 @@ namespace Intersect.Editor.Forms.Editors.Events
                     break;
                 case EventCommandType.ChangeFace:
                     tmpCommand = new ChangeFaceCommand();
-
+                    break;
+                case EventCommandType.ChangeHair:
+                    tmpCommand = new ChangeHairCommand();
                     break;
                 case EventCommandType.ChangeGender:
                     tmpCommand = new ChangeGenderCommand();
@@ -1191,6 +1193,10 @@ namespace Intersect.Editor.Forms.Editors.Events
                     break;
                 case EventCommandType.ChangeFace:
                     cmdWindow = new EventCommandChangeFace((ChangeFaceCommand) command, this);
+
+                    break;
+                case EventCommandType.ChangeHair:
+                    cmdWindow = new EventCommandChangeHair((ChangeHairCommand)command, this);
 
                     break;
                 case EventCommandType.ChangeGender:

@@ -100,6 +100,12 @@
     <Compile Include="Forms\Controls\GameObjectList.Designer.cs">
       <DependentUpon>GameObjectList.cs</DependentUpon>
     </Compile>
+    <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangeHair.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangeHair.Designer.cs">
+      <DependentUpon>EventCommand_ChangeHair.cs</DependentUpon>
+    </Compile>
     <Compile Include="Forms\Editors\Events\Event Commands\EventCommand_ChangePlayerColor.cs">
       <SubType>UserControl</SubType>
     </Compile>
