@@ -1174,7 +1174,7 @@ namespace Intersect.Editor.Forms.Editors
             this.cmbHair.BorderColor = System.Drawing.Color.FromArgb(((int)(((byte)(90)))), ((int)(((byte)(90)))), ((int)(((byte)(90)))));
             this.cmbHair.BorderStyle = System.Windows.Forms.ButtonBorderStyle.Solid;
             this.cmbHair.ButtonColor = System.Drawing.Color.FromArgb(((int)(((byte)(43)))), ((int)(((byte)(43)))), ((int)(((byte)(43)))));
-            this.cmbHair.ButtonIcon = ((System.Drawing.Bitmap)(resources.GetObject("cmbHair.ButtonIcon")));
+           
             this.cmbHair.DrawDropdownHoverOutline = false;
             this.cmbHair.DrawFocusRectangle = false;
             this.cmbHair.DrawMode = System.Windows.Forms.DrawMode.OwnerDrawFixed;
