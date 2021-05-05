@@ -259,6 +259,7 @@ namespace Intersect.Client.Entities
                 TargetBox.Hide();
             }
 
+            //Change the .Weapon if you add more sprite animations
             for (var i = 0; i <= (int)SpriteAnimations.Weapon; i++)
                 {
                 CustomSpriteLayersAnimationTexture[(SpriteAnimations)i] = new GameTexture[(int)Enums.CustomSpriteLayers.CustomCount];
@@ -2050,21 +2051,7 @@ namespace Intersect.Client.Entities
                              case 3:
                         d = 2;
                         break;
-                    case 4: // UpLeft
-                        d = 5;
-
-                        break;
-                    case 5: // UpRight
-                        d = 7;
-
-                        break;
-                    case 6: // DownLeft
-                        d = 4;
-
-                        break;
-                    case 7: // DownRight
-                        d = 6;
-                        break;
+                    
                     default:
                      Dir = 0;
                         d = 3;
